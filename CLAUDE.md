@@ -15,7 +15,18 @@ The project is currently in the design/specification phase — no frontend tech 
 - **Backend:** Supabase (database, storage, realtime, edge functions)
 - **Authentication:** Google OAuth via Supabase Auth (`supabase.auth.signInWithOAuth({ provider: 'google' })`)
 - Use Supabase RLS (Row Level Security) policies to restrict data access per user
-- Store user profiles in a `profiles` table linked to `auth.users` via trigger or `auth.uid()`
+- Store user profiles in a `profiles` table linked to `auth_identities` (never directly to `auth.users`) — see auth portability pattern in the Database Agent section
+
+## Database Agent
+
+Use the `supabase-db` agent for all database work. Invoke it for:
+- Writing or reviewing SQL migrations
+- Designing schema changes (new tables, columns, indexes)
+- Authoring RLS policies using the `auth.profile_id()` pattern
+- Writing complex SQL queries
+- Any decision touching the auth portability pattern
+
+The agent has persistent memory at `.claude/agent-memory/supabase-db/` and knows the full schema.
 
 ## Design Agent
 
