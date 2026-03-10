@@ -1,0 +1,131 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --sunrise-orange: #FF6B35;
+  --warm-amber: #FFB347;
+  --creamy-white: #FFF8F0;
+  --deep-espresso: #2C1810;
+  --fresh-veggie-green: #5BAD6F;
+  --success: #4CAF82;
+  --error: #EF476F;
+}
+
+@layer base {
+  html {
+    direction: rtl;
+  }
+
+  body {
+    background-color: #ffffff;
+    color: var(--deep-espresso);
+    font-family: var(--font-rubik), sans-serif;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+}
+
+@layer components {
+  .card {
+    background: #ffffff;
+    border-radius: 20px;
+    box-shadow: 0 4px 24px rgba(44, 24, 16, 0.08), 0 1px 4px rgba(44, 24, 16, 0.04);
+  }
+
+  .card-outline {
+    background: #ffffff;
+    border-radius: 20px;
+    border: 1.5px solid #f0e8e0;
+    box-shadow: 0 2px 12px rgba(44, 24, 16, 0.06);
+  }
+
+  .btn-primary {
+    background-color: var(--sunrise-orange);
+    color: white;
+    font-weight: 700;
+    font-size: 16px;
+    padding: 12px 28px;
+    border-radius: 12px;
+    transition: all 150ms ease-out;
+    min-height: 44px;
+    min-width: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .btn-primary:hover {
+    background-color: #e8571e;
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(255, 107, 53, 0.35);
+  }
+
+  .btn-primary:active {
+    transform: translateY(0);
+    box-shadow: none;
+  }
+
+  .input-field {
+    width: 100%;
+    padding: 12px 16px;
+    border-radius: 12px;
+    border: 1.5px solid #e8ddd6;
+    background: #fafafa;
+    color: var(--deep-espresso);
+    font-size: 15px;
+    transition: border-color 150ms, box-shadow 150ms;
+    font-family: var(--font-rubik), sans-serif;
+  }
+
+  .input-field::placeholder {
+    color: #b0a09a;
+  }
+
+  .input-field:focus {
+    outline: none;
+    border-color: var(--sunrise-orange);
+    background: #ffffff;
+    box-shadow: 0 0 0 3px rgba(255, 107, 53, 0.12);
+  }
+
+  .glass-hero {
+    background: rgba(255, 255, 255, 0.22);
+    backdrop-filter: blur(16px) saturate(180%);
+    -webkit-backdrop-filter: blur(16px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.45);
+    border-radius: 28px;
+    box-shadow: 0 8px 40px rgba(44, 24, 16, 0.10), 0 2px 8px rgba(255, 107, 53, 0.08);
+  }
+
+  .glass-contact {
+    background: rgba(255, 248, 240, 0.72);
+    backdrop-filter: blur(12px) saturate(160%);
+    -webkit-backdrop-filter: blur(12px) saturate(160%);
+    border: 1px solid rgba(255, 179, 71, 0.22);
+    border-radius: 20px;
+    box-shadow: 0 4px 24px rgba(44, 24, 16, 0.07), 0 1px 4px rgba(255, 107, 53, 0.06);
+  }
+
+  .glass-plan-featured {
+    position: relative;
+    border-radius: 20px;
+    background: linear-gradient(135deg, #FFE4B5 0%, #FFB347 50%, #FF6B35 100%);
+  }
+  .glass-plan-featured::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(255, 255, 255, 0.18);
+    backdrop-filter: blur(12px) saturate(180%);
+    -webkit-backdrop-filter: blur(12px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.40);
+    border-radius: inherit;
+    pointer-events: none;
+  }
+  .glass-plan-featured > * {
+    position: relative;
+  }
+}
