@@ -4,7 +4,7 @@
 --
 -- Pattern:
 --   • Lookup / catalog tables: SELECT only, available to all authenticated users
---   • User-owned tables: full access restricted to the owning profile via auth.profile_id()
+--   • User-owned tables: full access restricted to the owning profile via profile_id()
 -- =============================================================================
 
 -- ---------------------------------------------------------------------------
@@ -25,8 +25,8 @@ ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "profiles: owner all"
   ON profiles FOR ALL
-  USING (id = auth.profile_id())
-  WITH CHECK (id = auth.profile_id());
+  USING (id = profile_id())
+  WITH CHECK (id = profile_id());
 
 -- ---------------------------------------------------------------------------
 -- kids — scoped to parent profile
@@ -36,8 +36,8 @@ ALTER TABLE kids ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "kids: owner all"
   ON kids FOR ALL
-  USING (profile_id = auth.profile_id())
-  WITH CHECK (profile_id = auth.profile_id());
+  USING (profile_id = profile_id())
+  WITH CHECK (profile_id = profile_id());
 
 -- ---------------------------------------------------------------------------
 -- dietary_tags — public read-only (catalog)
@@ -62,14 +62,14 @@ CREATE POLICY "kid_dietary_restrictions: owner all"
     EXISTS (
       SELECT 1 FROM kids
       WHERE kids.id = kid_dietary_restrictions.kid_id
-        AND kids.profile_id = auth.profile_id()
+        AND kids.profile_id = profile_id()
     )
   )
   WITH CHECK (
     EXISTS (
       SELECT 1 FROM kids
       WHERE kids.id = kid_dietary_restrictions.kid_id
-        AND kids.profile_id = auth.profile_id()
+        AND kids.profile_id = profile_id()
     )
   );
 
@@ -147,8 +147,8 @@ ALTER TABLE subscriptions ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "subscriptions: owner all"
   ON subscriptions FOR ALL
-  USING (profile_id = auth.profile_id())
-  WITH CHECK (profile_id = auth.profile_id());
+  USING (profile_id = profile_id())
+  WITH CHECK (profile_id = profile_id());
 
 -- ---------------------------------------------------------------------------
 -- orders — scoped to profile
@@ -158,8 +158,8 @@ ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "orders: owner all"
   ON orders FOR ALL
-  USING (profile_id = auth.profile_id())
-  WITH CHECK (profile_id = auth.profile_id());
+  USING (profile_id = profile_id())
+  WITH CHECK (profile_id = profile_id());
 
 -- ---------------------------------------------------------------------------
 -- order_items — via order ownership
@@ -173,14 +173,14 @@ CREATE POLICY "order_items: owner all"
     EXISTS (
       SELECT 1 FROM orders
       WHERE orders.id = order_items.order_id
-        AND orders.profile_id = auth.profile_id()
+        AND orders.profile_id = profile_id()
     )
   )
   WITH CHECK (
     EXISTS (
       SELECT 1 FROM orders
       WHERE orders.id = order_items.order_id
-        AND orders.profile_id = auth.profile_id()
+        AND orders.profile_id = profile_id()
     )
   );
 
@@ -198,7 +198,7 @@ CREATE POLICY "order_item_customizations: owner all"
       FROM order_items oi
       JOIN orders o ON o.id = oi.order_id
       WHERE oi.id = order_item_customizations.order_item_id
-        AND o.profile_id = auth.profile_id()
+        AND o.profile_id = profile_id()
     )
   )
   WITH CHECK (
@@ -207,7 +207,7 @@ CREATE POLICY "order_item_customizations: owner all"
       FROM order_items oi
       JOIN orders o ON o.id = oi.order_id
       WHERE oi.id = order_item_customizations.order_item_id
-        AND o.profile_id = auth.profile_id()
+        AND o.profile_id = profile_id()
     )
   );
 
@@ -219,8 +219,8 @@ ALTER TABLE saved_orders ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "saved_orders: owner all"
   ON saved_orders FOR ALL
-  USING (profile_id = auth.profile_id())
-  WITH CHECK (profile_id = auth.profile_id());
+  USING (profile_id = profile_id())
+  WITH CHECK (profile_id = profile_id());
 
 -- ---------------------------------------------------------------------------
 -- saved_order_items — via saved_order ownership
@@ -234,14 +234,14 @@ CREATE POLICY "saved_order_items: owner all"
     EXISTS (
       SELECT 1 FROM saved_orders
       WHERE saved_orders.id = saved_order_items.saved_order_id
-        AND saved_orders.profile_id = auth.profile_id()
+        AND saved_orders.profile_id = profile_id()
     )
   )
   WITH CHECK (
     EXISTS (
       SELECT 1 FROM saved_orders
       WHERE saved_orders.id = saved_order_items.saved_order_id
-        AND saved_orders.profile_id = auth.profile_id()
+        AND saved_orders.profile_id = profile_id()
     )
   );
 
@@ -253,5 +253,5 @@ ALTER TABLE favorite_meals ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "favorite_meals: owner all"
   ON favorite_meals FOR ALL
-  USING (profile_id = auth.profile_id())
-  WITH CHECK (profile_id = auth.profile_id());
+  USING (profile_id = profile_id())
+  WITH CHECK (profile_id = profile_id());

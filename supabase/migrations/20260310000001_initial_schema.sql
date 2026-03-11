@@ -43,17 +43,6 @@ CREATE TABLE auth_identities (
   UNIQUE (provider, provider_uid)
 );
 
--- SQL function: wraps the Supabase-specific uid lookup.
--- All RLS policies reference only this function — swap internals to migrate.
-CREATE OR REPLACE FUNCTION auth.profile_id()
-RETURNS UUID AS $$
-  SELECT id
-  FROM auth_identities
-  WHERE provider = 'supabase'
-    AND provider_uid = auth.uid()::TEXT
-  LIMIT 1;
-$$ LANGUAGE sql STABLE SECURITY DEFINER;
-
 -- ---------------------------------------------------------------------------
 -- Profiles (parent accounts)
 -- ---------------------------------------------------------------------------
@@ -72,6 +61,19 @@ CREATE TABLE profiles (
 );
 
 SELECT attach_updated_at('profiles');
+
+-- SQL function: returns profiles.id for the current authenticated user.
+-- All RLS policies call only this function — swap internals here to migrate auth providers.
+CREATE OR REPLACE FUNCTION public.profile_id()
+RETURNS UUID AS $$
+  SELECT p.id
+  FROM profiles p
+  JOIN auth_identities ai ON ai.id = p.identity_id
+  WHERE ai.provider = 'supabase'
+    AND ai.provider_uid = auth.uid()::TEXT
+    AND p.deleted_at IS NULL
+  LIMIT 1;
+$$ LANGUAGE sql STABLE SECURITY DEFINER;
 
 -- ---------------------------------------------------------------------------
 -- Kids (children per parent)

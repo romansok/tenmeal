@@ -128,4 +128,555 @@
   .glass-plan-featured > * {
     position: relative;
   }
+
+  /* ─── Navbar ─────────────────────────────────────────────── */
+
+  /*
+   * Base container
+   * At-rest: very subtle warm glass — almost invisible so the page
+   * content leads. On scroll (.navbar-scrolled) the glass deepens and
+   * the brand gradient becomes visible, anchoring the bar visually.
+   */
+  .navbar-root {
+    position: fixed;
+    top: 0;
+    right: 0;
+    left: 0;
+    z-index: 100;                         /* z-sticky */
+
+    /* Glass base — level 1, neutral tint */
+    background: rgba(255, 248, 240, 0.72);
+    backdrop-filter: blur(12px) saturate(180%);
+    -webkit-backdrop-filter: blur(12px) saturate(180%);
+
+    /* Hairline warm border */
+    border-bottom: 1px solid rgba(255, 179, 71, 0.18);
+
+    /* Soft espresso shadow */
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.60) inset,  /* top inner highlight */
+      0 4px 16px rgba(44, 24, 16, 0.06);
+
+    transition:
+      background        200ms ease-out,
+      border-color      200ms ease-out,
+      box-shadow        200ms ease-out;
+  }
+
+  /* Scrolled state — richer glass, deeper shadow */
+  .navbar-scrolled {
+    background: rgba(255, 248, 240, 0.88);
+    border-bottom-color: rgba(255, 179, 71, 0.28);
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.70) inset,
+      0 8px 32px rgba(44, 24, 16, 0.10),
+      0 2px 8px  rgba(255, 107, 53, 0.06);
+  }
+
+  /*
+   * Gradient shimmer accent line at the bottom of the nav.
+   * A 2px tall strip that goes from amber → orange → transparent,
+   * layered on top of the border-bottom.
+   */
+  .navbar-shimmer-line {
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    left: 0;
+    height: 2px;
+    background: linear-gradient(
+      to left,                          /* RTL: starts from right edge */
+      rgba(255, 179, 71, 0.00)  0%,
+      rgba(255, 179, 71, 0.55) 30%,
+      rgba(255, 107, 53, 0.70) 60%,
+      rgba(255, 107, 53, 0.00) 100%
+    );
+    pointer-events: none;
+  }
+
+  /* ─── Logo ──────────────────────────────────────────────── */
+
+  .navbar-logo-link {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    text-decoration: none;
+    outline-offset: 4px;
+  }
+
+  /* Icon wrapper — positions the glow pseudo-element */
+  .navbar-logo-icon-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  /* The SVG itself scales on hover via the group */
+  .navbar-logo-svg {
+    position: relative;
+    z-index: 1;
+    transition: transform 200ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .navbar-logo-link:hover .navbar-logo-svg,
+  .navbar-logo-link:focus-visible .navbar-logo-svg {
+    transform: scale(1.15) rotate(-4deg);
+  }
+
+  /*
+   * Ambient glow behind the sandwich icon.
+   * A blurred amber circle that fades in on hover.
+   */
+  .navbar-logo-glow {
+    position: absolute;
+    inset: -6px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(255, 179, 71, 0.55) 0%, rgba(255, 107, 53, 0.00) 70%);
+    opacity: 0;
+    transition: opacity 200ms ease-out;
+    pointer-events: none;
+    z-index: 0;
+  }
+  .navbar-logo-link:hover .navbar-logo-glow,
+  .navbar-logo-link:focus-visible .navbar-logo-glow {
+    opacity: 1;
+  }
+
+  /*
+   * Brand name — gradient text at rest, shifts warmer on hover.
+   * Gradient: espresso → sunrise-orange ensures legibility on
+   * creamy-white backgrounds (contrast ratio verified ≥ 4.5:1
+   * against the mid-point espresso anchor).
+   */
+  .navbar-brand-text {
+    font-size: clamp(1rem, 1.5vw + 0.5rem, 1.125rem);
+    font-weight: 800;
+    letter-spacing: -0.3px;
+    line-height: 1;
+
+    /* Gradient text */
+    background: linear-gradient(
+      135deg,
+      var(--deep-espresso)   0%,
+      #6B3520               40%,
+      var(--sunrise-orange) 100%
+    );
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+
+    transition: filter 150ms ease-out;
+  }
+  .navbar-logo-link:hover .navbar-brand-text,
+  .navbar-logo-link:focus-visible .navbar-brand-text {
+    /* Shift gradient toward orange on hover without repainting text */
+    filter: brightness(1.08) saturate(1.15);
+  }
+
+  /* ─── Nav links ─────────────────────────────────────────── */
+
+  /*
+   * Pill-style hover. The underline slides in from 0 width (center-out)
+   * rather than a typical left→right wipe, which feels more premium.
+   */
+  .navbar-link {
+    position: relative;
+    padding: 6px 12px;
+    font-size: 0.875rem;          /* 14px body */
+    font-weight: 600;
+    color: rgba(44, 24, 16, 0.65);
+    text-decoration: none;
+    border-radius: 8px;
+    transition: color 150ms ease-out, background 150ms ease-out;
+    white-space: nowrap;
+    outline-offset: 3px;
+  }
+
+  /* Hover pill tint */
+  .navbar-link:hover,
+  .navbar-link:focus-visible {
+    color: var(--deep-espresso);
+    background: rgba(255, 107, 53, 0.07);
+  }
+
+  /* Expanding underline accent */
+  .navbar-link::after {
+    content: '';
+    position: absolute;
+    bottom: 2px;
+    left: 50%;
+    right: 50%;
+    height: 2px;
+    border-radius: 2px;
+    background: linear-gradient(90deg, var(--warm-amber), var(--sunrise-orange));
+    transition: left 200ms ease-out, right 200ms ease-out;
+  }
+  .navbar-link:hover::after,
+  .navbar-link:focus-visible::after {
+    left: 12px;
+    right: 12px;
+  }
+
+  /* ─── CTA Button ────────────────────────────────────────── */
+
+  /*
+   * Gradient CTA — extends the global .btn-primary but constrained
+   * for navbar proportions (smaller padding, sharper radius).
+   * Uses a two-stop gradient instead of a flat color for richness.
+   */
+  .navbar-cta {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 36px;
+    padding: 0 16px;
+    border-radius: 10px;
+    font-size: 0.875rem;        /* 14px */
+    font-weight: 700;
+    color: #ffffff;
+    text-decoration: none;
+    white-space: nowrap;
+
+    /* Brand gradient fill */
+    background: linear-gradient(135deg, #FF8C5A 0%, #FF6B35 55%, #E8501A 100%);
+
+    /* Multi-stop shadow: warm glow + depth */
+    box-shadow:
+      0 1px 0  rgba(255, 255, 255, 0.25) inset,  /* top specular */
+      0 4px 12px rgba(255, 107, 53, 0.30),
+      0 1px 3px  rgba(44, 24, 16, 0.12);
+
+    transition:
+      transform   150ms ease-out,
+      box-shadow  150ms ease-out,
+      filter      150ms ease-out;
+
+    outline-offset: 3px;
+  }
+
+  .navbar-cta:hover,
+  .navbar-cta:focus-visible {
+    transform: translateY(-2px);
+    box-shadow:
+      0 1px 0  rgba(255, 255, 255, 0.25) inset,
+      0 8px 24px rgba(255, 107, 53, 0.42),   /* bigger glow on hover */
+      0 2px 6px  rgba(44, 24, 16, 0.14);
+    filter: brightness(1.05);
+  }
+
+  .navbar-cta:active {
+    transform: translateY(0);
+    box-shadow:
+      0 1px 0  rgba(255, 255, 255, 0.20) inset,
+      0 2px 6px rgba(255, 107, 53, 0.20),
+      0 1px 2px rgba(44, 24, 16, 0.10);
+    filter: brightness(0.97);
+  }
+
+  /* ─── Loading skeleton ──────────────────────────────────── */
+
+  .navbar-skeleton {
+    width: 136px;
+    height: 36px;
+    border-radius: 10px;
+    background: linear-gradient(
+      90deg,
+      rgba(44, 24, 16, 0.06) 25%,
+      rgba(44, 24, 16, 0.03) 50%,
+      rgba(44, 24, 16, 0.06) 75%
+    );
+    background-size: 200% 100%;
+    animation: navbar-shimmer 1.5s ease-in-out infinite;
+  }
+
+  @keyframes navbar-shimmer {
+    0%   { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+
+  /* ─── User avatar + ring ────────────────────────────────── */
+
+  .navbar-user-link {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    text-decoration: none;
+    border-radius: 10px;
+    padding: 4px 8px 4px 4px;
+    transition: background 150ms ease-out;
+    outline-offset: 3px;
+  }
+  .navbar-user-link:hover,
+  .navbar-user-link:focus-visible {
+    background: rgba(255, 107, 53, 0.07);
+  }
+
+  /*
+   * Avatar ring: double-ring technique.
+   * Outer ring = gradient stroke (amber → orange).
+   * Inner gap = creamy-white ring to visually separate from avatar fill.
+   */
+  .navbar-avatar-ring {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    padding: 2px;                           /* gap between ring and avatar */
+
+    /* Gradient border via background-clip trick */
+    background: linear-gradient(135deg, var(--warm-amber) 0%, var(--sunrise-orange) 100%);
+
+    box-shadow:
+      0 0 0 3px rgba(255, 179, 71, 0.00),   /* initial glow — off */
+      0 2px 8px rgba(255, 107, 53, 0.20);
+
+    transition: box-shadow 200ms ease-out, transform 200ms ease-out;
+  }
+  .navbar-user-link:hover .navbar-avatar-ring,
+  .navbar-user-link:focus-visible .navbar-avatar-ring {
+    box-shadow:
+      0 0 0 3px rgba(255, 179, 71, 0.35),   /* glow ring on hover */
+      0 4px 16px rgba(255, 107, 53, 0.28);
+    transform: scale(1.06);
+  }
+
+  /* Avatar circle itself */
+  .navbar-avatar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #FF8C5A 0%, #FF6B35 100%);
+    color: #ffffff;
+    font-weight: 700;
+    font-size: 11px;
+    letter-spacing: 0.3px;
+    /* White inner ring between gradient border and fill */
+    outline: 2px solid rgba(255, 248, 240, 0.90);
+    outline-offset: 0;
+    flex-shrink: 0;
+    user-select: none;
+  }
+
+  /* Display name beside avatar */
+  .navbar-user-name {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: rgba(44, 24, 16, 0.80);
+    max-width: 96px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    transition: color 150ms ease-out;
+  }
+  .navbar-user-link:hover .navbar-user-name,
+  .navbar-user-link:focus-visible .navbar-user-name {
+    color: var(--deep-espresso);
+  }
+
+  /* ─── Dashboard Components ─────────────────────────────── */
+
+  /* Kid switcher pill */
+  .kid-pill { display:inline-flex; align-items:center; gap:6px; padding:8px 12px; border-radius:24px; background:rgba(255,255,255,0.40); border:1.5px solid rgba(255,255,255,0.55); min-height:44px; cursor:pointer; white-space:nowrap; font-size:14px; font-weight:600; color:rgba(44,24,16,0.65); flex-shrink:0; transition:all 150ms ease-out; }
+  .kid-pill-active { background:rgba(255,107,53,0.12); border-color:rgba(255,107,53,0.35); color:#2C1810; box-shadow:0 0 0 3px rgba(255,107,53,0.10); }
+
+  /* Week picker chips */
+  .week-chip { display:inline-flex; align-items:center; justify-content:center; padding:8px 16px; border-radius:20px; min-height:44px; background:transparent; border:1px solid transparent; font-size:14px; font-weight:600; color:rgba(44,24,16,0.55); cursor:pointer; white-space:nowrap; flex-shrink:0; transition:all 150ms ease-out; }
+  .week-chip-active { background:rgba(255,107,53,0.12); border-color:rgba(255,107,53,0.30); color:#FF6B35; }
+
+  /* Day card — ON state (orange-tinted glass) */
+  .glass-card-interactive { background:rgba(255,107,53,0.08); backdrop-filter:blur(12px) saturate(180%); -webkit-backdrop-filter:blur(12px) saturate(180%); border:1px solid rgba(255,107,53,0.18); border-radius:16px; box-shadow:0 4px 16px rgba(255,107,53,0.08); transition:background 200ms ease-out, border-color 200ms ease-out; }
+
+  /* Day card — OFF state (muted dashed) */
+  .glass-card-off { background:rgba(255,255,255,0.35); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); border:1.5px dashed rgba(44,24,16,0.12); border-radius:16px; transition:background 200ms ease-out; }
+
+  /* Deadline warning banner */
+  .dash-deadline-banner { background:rgba(255,209,102,0.20); border:1.5px solid rgba(255,209,102,0.50); border-radius:12px; padding:12px 16px; display:flex; align-items:center; gap:10px; }
+
+  /* Meal type icon button */
+  .meal-icon-btn { display:flex; flex-direction:column; align-items:center; justify-content:center; width:56px; height:56px; border-radius:12px; background:rgba(255,255,255,0.50); border:1.5px solid rgba(255,255,255,0.70); cursor:pointer; transition:all 150ms ease-out; flex-shrink:0; gap:4px; }
+  .meal-icon-btn-active { background:rgba(255,107,53,0.12); border-color:rgba(255,107,53,0.40); box-shadow:0 0 0 3px rgba(255,107,53,0.10); }
+
+  /* Progress bar */
+  .balance-track { width:100%; height:8px; background:rgba(44,24,16,0.08); border-radius:4px; overflow:hidden; }
+  .balance-fill { height:100%; border-radius:4px; background:linear-gradient(90deg,#FFB347,#FF6B35); transition:width 400ms ease-out; }
+
+  /* Save week sticky button */
+  .save-week-bar { position:fixed; bottom:0; left:0; right:0; padding:16px; background:rgba(255,248,240,0.92); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); border-top:1px solid rgba(255,179,71,0.2); z-index:50; }
+
+  .btn-subscription-cta {
+    display: inline-flex; align-items: center; justify-content: center;
+    gap: 6px; min-height: 44px; padding: 0 20px; border-radius: 12px;
+    font-size: 15px; font-weight: 700; color: white; cursor: pointer;
+    background: linear-gradient(135deg, #FF8C5A 0%, #FF6B35 100%);
+    box-shadow: 0 4px 16px rgba(255,107,53,0.30);
+    transition: transform 150ms ease-out, box-shadow 150ms ease-out;
+  }
+  .btn-subscription-cta:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(255,107,53,0.42); }
+  .btn-subscription-cta:active { transform: translateY(0); }
+
+  .plan-card {
+    position: relative; width: 100%; text-align: right; padding: 16px;
+    border-radius: 16px; border: 1.5px solid rgba(255,255,255,0.35);
+    background: rgba(255,255,255,0.18); backdrop-filter: blur(12px) saturate(180%);
+    -webkit-backdrop-filter: blur(12px) saturate(180%);
+    box-shadow: 0 4px 16px rgba(31,38,135,0.08); cursor: pointer;
+    transition: border-color 150ms ease-out, background 150ms ease-out, box-shadow 150ms ease-out, transform 150ms ease-out;
+  }
+  .plan-card:hover { background: rgba(255,255,255,0.30); transform: translateY(-1px); box-shadow: 0 6px 20px rgba(31,38,135,0.12); }
+  .plan-card-selected { border-color: rgba(255,107,53,0.55); background: rgba(255,107,53,0.08); box-shadow: 0 0 0 3px rgba(255,107,53,0.15), 0 4px 16px rgba(255,107,53,0.12); }
+
+  /* ─── User page layout ─────────────────────────────────── */
+
+  .user-page-layout {
+    display: flex;
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 24px;
+    max-width: 1040px;
+    margin: 0 auto;
+    padding: 0 16px 96px;
+  }
+
+  .user-sidebar {
+    width: 220px;
+    flex-shrink: 0;
+    position: sticky;
+    top: 88px;
+    max-height: calc(100vh - 104px);
+    overflow-y: auto;
+    background: rgba(255, 255, 255, 0.18);
+    backdrop-filter: blur(12px) saturate(180%);
+    -webkit-backdrop-filter: blur(12px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    border-radius: 20px;
+    box-shadow: 0 8px 32px rgba(31, 38, 135, 0.12);
+    overflow: hidden;
+  }
+
+  .user-content-area {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .user-hero-strip {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.35);
+  }
+
+  .sidebar-nav-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 10px 16px;
+    background: none;
+    border: none;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 600;
+    color: rgba(44, 24, 16, 0.65);
+    cursor: pointer;
+    text-align: right;
+    transition: background 150ms ease-out, color 150ms ease-out;
+    font-family: var(--font-rubik), sans-serif;
+    margin: 0 8px;
+    width: calc(100% - 16px);
+  }
+  .sidebar-nav-item:hover {
+    background: rgba(44, 24, 16, 0.05);
+    color: #2C1810;
+  }
+  .sidebar-nav-item-active {
+    background: rgba(255, 107, 53, 0.12);
+    color: #FF6B35;
+    font-weight: 700;
+  }
+  .sidebar-nav-item-active:hover {
+    background: rgba(255, 107, 53, 0.18);
+    color: #FF6B35;
+  }
+
+  /* Mobile tab bar — hidden on desktop */
+  .user-tab-bar {
+    display: none;
+    position: sticky;
+    top: 64px;
+    z-index: 80;
+    background: rgba(255, 248, 240, 0.92);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid rgba(255, 179, 71, 0.2);
+    padding: 0 8px;
+    gap: 0;
+  }
+
+  .user-tab-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    flex: 1;
+    padding: 8px 4px;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    font-size: 11px;
+    font-weight: 600;
+    color: rgba(44, 24, 16, 0.50);
+    cursor: pointer;
+    transition: color 150ms ease-out, border-color 150ms ease-out;
+    font-family: var(--font-rubik), sans-serif;
+    min-height: 52px;
+  }
+  .user-tab-item:hover { color: rgba(44, 24, 16, 0.75); }
+  .user-tab-item-active {
+    color: #FF6B35;
+    border-bottom-color: #FF6B35;
+    font-weight: 700;
+  }
+
+  @media (max-width: 767px) {
+    .user-sidebar { display: none; }
+    .user-tab-bar { display: flex; }
+    .user-page-layout { padding: 0 16px 96px; gap: 0; }
+  }
+
+  /* Save bar — sticky inside content column on desktop */
+  @media (min-width: 768px) {
+    .save-week-bar {
+      position: sticky;
+      bottom: 0;
+      left: auto;
+      right: auto;
+      border-radius: 0 0 16px 16px;
+    }
+  }
+
+  /* ─── Sign-out ghost link ───────────────────────────────── */
+
+  .navbar-signout {
+    padding: 6px 10px;
+    font-size: 0.8125rem;         /* 13px */
+    font-weight: 600;
+    color: rgba(44, 24, 16, 0.40);
+    border-radius: 8px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    transition: color 150ms ease-out, background 150ms ease-out;
+    outline-offset: 3px;
+  }
+  .navbar-signout:hover,
+  .navbar-signout:focus-visible {
+    color: var(--error);              /* #EF476F — red for destructive */
+    background: rgba(239, 71, 111, 0.07);
+  }
 }

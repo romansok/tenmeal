@@ -4,7 +4,8 @@ import { createClient } from '@/lib/supabase/server'
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url)
   const code = searchParams.get('code')
-  const next = searchParams.get('next') ?? '/dashboard'
+  const rawNext = searchParams.get('next') ?? '/user'
+  const next = rawNext.startsWith('/') && !rawNext.startsWith('//') ? rawNext : '/dashboard'
 
   if (!code) {
     return NextResponse.redirect(`${origin}/auth/auth-code-error`)
@@ -23,17 +24,18 @@ export async function GET(request: Request) {
   } = await supabase.auth.getUser()
 
   if (user) {
-    const { data: identity } = await supabase
+    const { data: identityRow } = await supabase
       .from('auth_identities')
-      .select('profile_id')
-      .eq('provider_user_id', user.id)
+      .select('id')
+      .eq('provider', 'supabase')
+      .eq('provider_uid', user.id)
       .single()
 
-    if (identity?.profile_id) {
+    if (identityRow) {
       const { data: profile } = await supabase
         .from('profiles')
         .select('onboarding_done')
-        .eq('id', identity.profile_id)
+        .eq('identity_id', identityRow.id)
         .single()
 
       if (profile && !profile.onboarding_done) {

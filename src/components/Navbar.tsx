@@ -1,6 +1,10 @@
 'use client'
 
 import Link from 'next/link'
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
+import type { User } from '@supabase/supabase-js'
 
 function SandwichLogo({ className }: { className?: string }) {
   return (
@@ -43,40 +47,136 @@ function SandwichLogo({ className }: { className?: string }) {
   )
 }
 
+function UserAvatar({ name }: { name: string }) {
+  const initials = name
+    .split(' ')
+    .map((w) => w[0])
+    .slice(0, 2)
+    .join('')
+    .toUpperCase()
+
+  return (
+    <span className="navbar-avatar" aria-hidden="true">
+      {initials || '?'}
+    </span>
+  )
+}
+
 export default function Navbar() {
+  const [user, setUser] = useState<User | null | undefined>(undefined)
+  const [scrolled, setScrolled] = useState(false)
+  const router = useRouter()
+
+  useEffect(() => {
+    const supabase = createClient()
+
+    supabase.auth.getSession().then(({ data }) => {
+      setUser(data.session?.user ?? null)
+    })
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
+      setUser(session?.user ?? null)
+    })
+
+    return () => subscription.unsubscribe()
+  }, [])
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 8)
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
+
+  async function handleSignOut() {
+    const supabase = createClient()
+    await supabase.auth.signOut()
+    router.push('/login')
+    router.refresh()
+  }
+
   const scrollToContact = () => {
     document.getElementById('contact')?.scrollIntoView({ behavior: 'smooth' })
   }
 
+  const displayName = user?.user_metadata?.full_name ?? user?.email ?? ''
+
   return (
-    <nav className="fixed top-0 right-0 left-0 z-50 bg-white/75 backdrop-blur-md border-b border-white/40 shadow-sm">
+    <nav className={`navbar-root${scrolled ? ' navbar-scrolled' : ''}`} role="navigation" aria-label="ניווט ראשי">
+      {/* Gradient shimmer line at bottom */}
+      <span className="navbar-shimmer-line" aria-hidden="true" />
+
       <div className="max-w-5xl mx-auto px-6 h-16 flex items-center justify-between">
+
+        {/* Logo */}
         <Link
           href="/"
-          className="flex items-center gap-2 group"
+          className="navbar-logo-link group"
           aria-label="ארוחת 10 — חזרה לדף הבית"
         >
-          <span
-            className="transition-transform duration-150 group-hover:scale-110"
-            style={{ transformOrigin: 'center' }}
-          >
-            <SandwichLogo />
+          <span className="navbar-logo-icon-wrap">
+            <SandwichLogo className="navbar-logo-svg" />
+            <span className="navbar-logo-glow" aria-hidden="true" />
           </span>
-          <span className="text-xl font-black text-deep-espresso tracking-tight group-hover:text-sunrise-orange transition-colors duration-150">
+          <span className="navbar-brand-text">
             ארוחת 10
           </span>
         </Link>
 
-        <div className="flex items-center gap-5">
+        {/* Right-side controls (RTL: visually on the left) */}
+        <div className="flex items-center gap-1">
+
+          {/* Nav link — אודות */}
           <Link
             href="/about"
-            className="text-sm font-semibold text-deep-espresso/70 hover:text-deep-espresso transition-colors duration-150"
+            className="navbar-link"
           >
             אודות
           </Link>
-          <button onClick={scrollToContact} className="btn-primary text-sm px-5 py-2.5">
-            הצטרפו עכשיו
-          </button>
+
+          {/* Loading placeholder — prevents layout shift */}
+          {user === undefined && (
+            <div className="navbar-skeleton" aria-hidden="true" />
+          )}
+
+          {/* Logged out */}
+          {user === null && (
+            <>
+              <button
+                onClick={scrollToContact}
+                className="navbar-link"
+              >
+                הצטרפו עכשיו
+              </button>
+              <Link href="/login" className="navbar-cta">
+                התחבר
+              </Link>
+            </>
+          )}
+
+          {/* Logged in */}
+          {user !== null && user !== undefined && (
+            <div className="flex items-center gap-2">
+              <Link
+                href="/user"
+                className="navbar-user-link group"
+                aria-label={`פרופיל של ${displayName}`}
+              >
+                <span className="navbar-avatar-ring">
+                  <UserAvatar name={displayName} />
+                </span>
+                <span className="navbar-user-name">
+                  {displayName}
+                </span>
+              </Link>
+              <button
+                onClick={handleSignOut}
+                className="navbar-signout"
+                aria-label="יציאה מהחשבון"
+              >
+                יציאה
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </nav>
