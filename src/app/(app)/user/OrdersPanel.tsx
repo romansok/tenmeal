@@ -160,8 +160,6 @@ export default function OrdersPanel({
       const result = await saveWeekOrders({
         kidId: selectedKidId,
         profileId,
-        subscriptionId: subscription?.id ?? null,
-        subscriptionMealsRemaining: mealsRemaining,
         days,
       })
 

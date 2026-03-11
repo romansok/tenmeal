@@ -4,16 +4,20 @@ import { useState } from 'react'
 import OrdersPanel from './OrdersPanel'
 import SubscriptionPanel from './SubscriptionPanel'
 import AccountPanel from './AccountPanel'
-import type { Profile, Kid, Subscription, MenuItem, ExistingOrder, SubscriptionPlan } from './types'
+import type { Profile, Kid, Subscription, MenuItem, ExistingOrder, SubscriptionPlan, SubscriptionHistoryItem, DietaryTag } from './types'
 
 interface ProfileViewProps {
   profile: Profile
   kids: Kid[]
   subscription: Subscription | null
+  initialMealsRemaining: number
+  mealsTotal: number
   menuItems: MenuItem[]
   initialWeekOrders: ExistingOrder[]
   initialWeekStart: string
   plans: SubscriptionPlan[]
+  subscriptionHistory: SubscriptionHistoryItem[]
+  dietaryTags: DietaryTag[]
 }
 
 type Tab = 'orders' | 'subscription' | 'account'
@@ -34,14 +38,21 @@ export default function ProfileView({
   profile,
   kids,
   subscription,
+  initialMealsRemaining,
+  mealsTotal,
   menuItems,
   initialWeekOrders,
   initialWeekStart,
   plans,
+  subscriptionHistory,
+  dietaryTags,
 }: ProfileViewProps) {
   const [activeTab, setActiveTab] = useState<Tab>('orders')
+  const [localKids, setLocalKids] = useState<Kid[]>(kids)
   const [localSubscription, setLocalSubscription] = useState<Subscription | null>(subscription)
-  const [mealsRemainingLocal, setMealsRemainingLocal] = useState(subscription?.meals_remaining ?? 0)
+  const [mealsRemainingLocal, setMealsRemainingLocal] = useState(initialMealsRemaining)
+  const [mealsTotalLocal, setMealsTotalLocal] = useState(mealsTotal)
+  const [localHistory, setLocalHistory] = useState<SubscriptionHistoryItem[]>(subscriptionHistory)
 
   function handleMealsUsed(n: number) {
     setMealsRemainingLocal((prev) => Math.max(0, prev - n))
@@ -49,7 +60,12 @@ export default function ProfileView({
 
   function handleSubscriptionChange(sub: Subscription, remaining: number) {
     setLocalSubscription(sub)
-    setMealsRemainingLocal(remaining)
+    setMealsRemainingLocal((prev) => prev + remaining)
+    setMealsTotalLocal((prev) => prev + (sub.subscription_plans?.meals_count ?? 0))
+  }
+
+  function handleHistoryChange(newSub: SubscriptionHistoryItem) {
+    setLocalHistory((prev) => [newSub, ...prev])
   }
 
   const tabs: Tab[] = ['orders', 'subscription', 'account']
@@ -127,7 +143,7 @@ export default function ProfileView({
                 <div
                   className="balance-fill"
                   style={{
-                    width: `${Math.min(100, Math.round((mealsRemainingLocal / (localSubscription.subscription_plans?.meals_count ?? 1)) * 100))}%`,
+                    width: `${Math.min(100, Math.round((mealsRemainingLocal / (mealsTotalLocal || 1)) * 100))}%`,
                   }}
                 />
               </div>
@@ -140,7 +156,7 @@ export default function ProfileView({
           {activeTab === 'orders' && (
             <OrdersPanel
               profileId={profile.id}
-              kids={kids}
+              kids={localKids}
               subscription={localSubscription}
               menuItems={menuItems}
               initialWeekOrders={initialWeekOrders}
@@ -152,14 +168,19 @@ export default function ProfileView({
             <SubscriptionPanel
               subscription={localSubscription}
               mealsRemaining={mealsRemainingLocal}
+              mealsTotal={mealsTotalLocal}
               plans={plans}
               onSubscriptionChange={handleSubscriptionChange}
+              subscriptionHistory={localHistory}
+              onHistoryChange={handleHistoryChange}
             />
           )}
           {activeTab === 'account' && (
             <AccountPanel
               profile={profile}
-              kids={kids}
+              kids={localKids}
+              dietaryTags={dietaryTags}
+              onKidsChange={setLocalKids}
             />
           )}
         </div>

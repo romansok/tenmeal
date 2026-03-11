@@ -7,6 +7,8 @@ export interface Kid {
   class_name: string | null
   emoji_avatar: string
   sort_order: number
+  school_name: string | null
+  school_address: string | null
   kid_dietary_restrictions: KidRestriction[]
 }
 
@@ -22,12 +24,24 @@ export interface Subscription {
   meals_remaining: number
   starts_at: string
   expires_at: string | null
+  auto_renew: boolean
+  subscription_plans: SubscriptionPlan | null
+}
+
+export interface SubscriptionHistoryItem {
+  id: string
+  meals_remaining: number
+  starts_at: string
+  expires_at: string | null
+  status: string
+  auto_renew: boolean
   subscription_plans: SubscriptionPlan | null
 }
 
 export interface Profile {
   id: string
   full_name: string | null
+  email: string | null
   phone: string | null
   avatar_url: string | null
   onboarding_done: boolean
