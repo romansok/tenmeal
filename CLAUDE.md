@@ -6,9 +6,51 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Tenmeal** is a Breakfast Ordering App targeting parents (primary: speed-focused) and kids (secondary: delight-focused). The core design philosophy is **"Speed for parents, delight for kids."**
 
-The project is currently in the design/specification phase — no frontend tech stack has been chosen yet.
+**Stack:** Next.js 14 (App Router) + TypeScript + Tailwind CSS, Supabase backend, deployed to GitHub Pages as a static export.
+
+**Status:** Early development — the project is actively evolving. DB schema changes, architectural pivots, and major refactors are expected and welcome. Don't be conservative: if a better approach exists, propose it.
 
 **Language:** Hebrew (RTL layout required). All UI text, labels, and content are in Hebrew.
+
+## Development Commands
+
+```bash
+npm run dev     # Start dev server at localhost:3000
+npm run build   # Build for production (outputs to out/)
+npm run start   # Start production server
+```
+
+No lint or test scripts are configured. TypeScript is checked on build.
+
+## Code Architecture
+
+```
+src/
+├── app/
+│   ├── (app)/          # Protected route group (requires auth)
+│   │   ├── onboard/    # Onboarding flow (Server Actions in actions.ts)
+│   │   └── user/       # User dashboard (profile, orders, subscription, kids)
+│   ├── api/contact/    # Contact form API route (Resend email)
+│   ├── auth/callback/  # Google OAuth callback handler
+│   └── login/          # Login page (triggers Google OAuth)
+├── components/         # Shared UI components (Hero, Navbar, Plans, Contact)
+└── lib/
+    ├── supabase/
+    │   ├── client.ts   # Browser Supabase client (createBrowserClient)
+    │   └── server.ts   # Server Supabase client (createServerClient with cookies)
+    └── constants.ts    # Subscription plans, contact email, WhatsApp number
+```
+
+**Routing & Auth Flow:** `middleware.ts` (root) refreshes Supabase sessions on every request and guards `/dashboard` and `/onboard` routes. After Google OAuth, `/auth/callback` exchanges the code for a session, then redirects to `/onboard` or `/user`.
+
+**Static Export:** `next.config.js` is configured for static export (`output: 'export'`). GitHub Actions builds and deploys the `out/` directory to GitHub Pages.
+
+**Environment Variables:**
+```
+NEXT_PUBLIC_SUPABASE_URL
+NEXT_PUBLIC_SUPABASE_ANON_KEY
+RESEND_API_KEY
+```
 
 ## Backend & Auth
 
