@@ -5,8 +5,12 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 interface KidInput {
-  name: string
+  first_name: string
+  last_name: string
   class_name: string
+  phone: string
+  school_name: string
+  school_address: string
   emoji_avatar: string
   tag_ids: string[]
 }
@@ -94,8 +98,12 @@ export async function completeOnboarding(
       .from('kids')
       .insert({
         profile_id: profile.id,
-        name: kid.name,
+        name: kid.first_name,
+        last_name: kid.last_name || null,
         class_name: kid.class_name || null,
+        phone: kid.phone || null,
+        school_name: kid.school_name || null,
+        school_address: kid.school_address || null,
         emoji_avatar: kid.emoji_avatar,
         sort_order: i,
       })
@@ -103,7 +111,7 @@ export async function completeOnboarding(
       .single()
 
     if (kidError || !kidRow) {
-      return { error: `שגיאה בשמירת פרטי ${kid.name}. נסה שוב.` }
+      return { error: `שגיאה בשמירת פרטי ${kid.first_name}. נסה שוב.` }
     }
 
     // 6. Insert dietary restrictions for this kid
@@ -118,7 +126,7 @@ export async function completeOnboarding(
         .insert(restrictions)
 
       if (tagsError) {
-        return { error: `שגיאה בשמירת העדפות תזונה של ${kid.name}. נסה שוב.` }
+        return { error: `שגיאה בשמירת העדפות תזונה של ${kid.first_name}. נסה שוב.` }
       }
     }
   }

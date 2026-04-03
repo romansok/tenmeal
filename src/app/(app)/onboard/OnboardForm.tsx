@@ -10,8 +10,12 @@ interface DietaryTag {
 }
 
 interface KidEntry {
-  name: string
+  first_name: string
+  last_name: string
   class_name: string
+  phone: string
+  school_name: string
+  school_address: string
   emoji_avatar: string
   tag_ids: string[]
 }
@@ -24,8 +28,26 @@ function isValidPhone(phone: string) {
   return PHONE_RE.test(phone.replace(/-/g, '').replace(/\s/g, ''))
 }
 
+function isKidValid(k: KidEntry) {
+  return (
+    k.first_name.trim() !== '' &&
+    k.last_name.trim() !== '' &&
+    k.school_name.trim() !== '' &&
+    k.class_name.trim() !== ''
+  )
+}
+
 function mkKid(): KidEntry {
-  return { name: '', class_name: '', emoji_avatar: '🧒', tag_ids: [] }
+  return {
+    first_name: '',
+    last_name: '',
+    class_name: '',
+    phone: '',
+    school_name: '',
+    school_address: '',
+    emoji_avatar: '🧒',
+    tag_ids: [],
+  }
 }
 
 export default function OnboardForm({ tags }: { tags: DietaryTag[] }) {
@@ -220,20 +242,53 @@ export default function OnboardForm({ tags }: { tags: DietaryTag[] }) {
                   ))}
                 </div>
 
+                <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
+                  <input
+                    type="text"
+                    placeholder="שם פרטי *"
+                    value={kid.first_name}
+                    onChange={(e) => updateKid(idx, { first_name: e.target.value })}
+                    style={{ ...inputStyle, flex: 1 }}
+                  />
+                  <input
+                    type="text"
+                    placeholder="שם משפחה *"
+                    value={kid.last_name}
+                    onChange={(e) => updateKid(idx, { last_name: e.target.value })}
+                    style={{ ...inputStyle, flex: 1 }}
+                  />
+                </div>
                 <input
                   type="text"
-                  placeholder="שם הילד/ה *"
-                  value={kid.name}
-                  onChange={(e) => updateKid(idx, { name: e.target.value })}
+                  placeholder="שם בית הספר *"
+                  value={kid.school_name}
+                  onChange={(e) => updateKid(idx, { school_name: e.target.value })}
                   style={{ ...inputStyle, marginBottom: '10px' }}
                 />
                 <input
                   type="text"
-                  placeholder="כיתה (למשל א׳, ב׳...)"
-                  value={kid.class_name}
-                  onChange={(e) => updateKid(idx, { class_name: e.target.value })}
-                  style={inputStyle}
+                  placeholder="כתובת בית הספר"
+                  value={kid.school_address}
+                  onChange={(e) => updateKid(idx, { school_address: e.target.value })}
+                  style={{ ...inputStyle, marginBottom: '10px' }}
                 />
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input
+                    type="text"
+                    placeholder="כיתה (א׳, ב׳...) *"
+                    value={kid.class_name}
+                    onChange={(e) => updateKid(idx, { class_name: e.target.value })}
+                    style={{ ...inputStyle, flex: 1 }}
+                  />
+                  <input
+                    type="tel"
+                    placeholder="טלפון ילד/ה"
+                    value={kid.phone}
+                    onChange={(e) => updateKid(idx, { phone: e.target.value })}
+                    style={{ ...inputStyle, flex: 1 }}
+                    dir="ltr"
+                  />
+                </div>
               </div>
             ))}
           </div>
@@ -277,10 +332,10 @@ export default function OnboardForm({ tags }: { tags: DietaryTag[] }) {
             </button>
             <button
               style={{
-                ...btnPrimary(kids.some((k) => !k.name.trim())),
+                ...btnPrimary(kids.some((k) => !isKidValid(k))),
                 flex: 2,
               }}
-              disabled={kids.some((k) => !k.name.trim())}
+              disabled={kids.some((k) => !isKidValid(k))}
               onClick={() => setStep(3)}
             >
               הבא
@@ -316,7 +371,7 @@ export default function OnboardForm({ tags }: { tags: DietaryTag[] }) {
                 >
                   <span style={{ fontSize: '20px' }}>{kid.emoji_avatar}</span>
                   <span style={{ color: '#2C1810', fontWeight: 700, fontSize: '15px' }}>
-                    {kid.name}
+                    {kid.first_name} {kid.last_name}
                   </span>
                 </div>
 
