@@ -125,14 +125,6 @@ export default function Navbar() {
         {/* Right-side controls (RTL: visually on the left) */}
         <div className="flex items-center gap-1">
 
-          {/* Nav link — אודות */}
-          <Link
-            href="/about"
-            className="navbar-link"
-          >
-            אודות
-          </Link>
-
           {/* Loading placeholder — prevents layout shift */}
           {user === undefined && (
             <div className="navbar-skeleton" aria-hidden="true" />
