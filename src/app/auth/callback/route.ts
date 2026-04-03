@@ -1,17 +1,42 @@
+import { createServerClient } from '@supabase/ssr'
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url)
   const code = searchParams.get('code')
   const rawNext = searchParams.get('next') ?? '/user'
-  const next = rawNext.startsWith('/') && !rawNext.startsWith('//') ? rawNext : '/dashboard'
+  const next = rawNext.startsWith('/') && !rawNext.startsWith('//') ? rawNext : '/user'
 
   if (!code) {
     return NextResponse.redirect(`${origin}/auth/auth-code-error`)
   }
 
-  const supabase = createClient()
+  // Build the redirect response first so we can attach cookies directly to it
+  const redirectResponse = NextResponse.redirect(`${origin}${next}`)
+
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.headers
+            .get('cookie')
+            ?.split(';')
+            .map((c) => {
+              const [name, ...rest] = c.trim().split('=')
+              return { name: name.trim(), value: rest.join('=') }
+            }) ?? []
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) =>
+            redirectResponse.cookies.set(name, value, options)
+          )
+        },
+      },
+    }
+  )
+
   const { error } = await supabase.auth.exchangeCodeForSession(code)
 
   if (error) {
@@ -39,10 +64,15 @@ export async function GET(request: Request) {
         .single()
 
       if (profile && !profile.onboarding_done) {
-        return NextResponse.redirect(`${origin}/onboard`)
+        redirectResponse.headers.set('location', `${origin}/onboard`)
+        return redirectResponse
       }
+    } else {
+      // No identity row yet — new user, send to onboarding
+      redirectResponse.headers.set('location', `${origin}/onboard`)
+      return redirectResponse
     }
   }
 
-  return NextResponse.redirect(`${origin}${next}`)
+  return redirectResponse
 }

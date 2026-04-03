@@ -39,7 +39,8 @@ export async function completeOnboarding(
     .single()
 
   if (identityError || !identityRow) {
-    return { error: 'שגיאה בזיהוי המשתמש. נסה שוב.' }
+    console.error('[onboard] auth_identities lookup failed:', identityError, 'user.id:', user.id)
+    return { error: `שגיאה בזיהוי המשתמש: ${identityError?.message ?? 'שורה לא נמצאה'}` }
   }
 
   // 3. Look up profile
@@ -50,7 +51,8 @@ export async function completeOnboarding(
     .single()
 
   if (profileError || !profile) {
-    return { error: 'פרופיל לא נמצא. נסה שוב.' }
+    console.error('[onboard] profiles lookup failed:', profileError)
+    return { error: `פרופיל לא נמצא: ${profileError?.message ?? 'שגיאה'}` }
   }
 
   // 4. Update profile
