@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { updatePhone, addKid, updateKid, removeKid } from './actions'
+import { useRouter } from 'next/navigation'
+import { updatePhone, addKid, updateKid, removeKid, deleteAccount } from './actions'
 import type { Profile, Kid, DietaryTag } from './types'
 
 interface AccountPanelProps {
@@ -47,6 +48,8 @@ function formFromKid(kid: Kid): KidFormData {
 }
 
 export default function AccountPanel({ profile, kids, dietaryTags, onKidsChange }: AccountPanelProps) {
+  const router = useRouter()
+
   // Phone
   const [phone, setPhone] = useState(profile.phone ?? '')
   const [editingPhone, setEditingPhone] = useState(false)
@@ -61,6 +64,23 @@ export default function AccountPanel({ profile, kids, dietaryTags, onKidsChange 
   const [formError, setFormError] = useState('')
   const [isKidPending, startKidTransition] = useTransition()
   const [removingKidId, setRemovingKidId] = useState<string | null>(null)
+
+  // Delete account
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
+  const [isDeletePending, startDeleteTransition] = useTransition()
+
+  function handleDeleteAccount() {
+    setDeleteError('')
+    startDeleteTransition(async () => {
+      const result = await deleteAccount()
+      if ('error' in result) {
+        setDeleteError(result.error)
+      } else {
+        router.push('/login')
+      }
+    })
+  }
 
   function openAdd() {
     setFormData(emptyForm())
@@ -539,6 +559,90 @@ export default function AccountPanel({ profile, kids, dietaryTags, onKidsChange 
           {editingKidId === 'new' && formCard}
         </div>
       </div>
+
+      {/* Danger zone */}
+      <div
+        style={{
+          ...glass,
+          border: '1px solid rgba(239,71,111,0.25)',
+          background: 'rgba(239,71,111,0.04)',
+        }}
+      >
+        <div style={{ fontSize: 15, fontWeight: 700, color: '#EF476F', marginBottom: 8 }}>
+          מחיקת חשבון
+        </div>
+        <div style={{ fontSize: 13, color: 'rgba(44,24,16,0.55)', marginBottom: 16, lineHeight: 1.5 }}>
+          מחיקת החשבון היא פעולה בלתי הפיכה. כל הנתונים יימחקו לצמיתות.
+        </div>
+        <button
+          onClick={() => setShowDeleteConfirm(true)}
+          style={{
+            padding: '10px 20px', borderRadius: 12, border: '1.5px solid #EF476F',
+            background: 'transparent', color: '#EF476F', fontSize: 14,
+            fontWeight: 700, cursor: 'pointer',
+          }}
+        >
+          מחק חשבון
+        </button>
+      </div>
+
+      {/* Confirmation modal */}
+      {showDeleteConfirm && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, zIndex: 1000,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: 'rgba(44,24,16,0.45)',
+            backdropFilter: 'blur(4px)',
+          }}
+          onClick={() => { if (!isDeletePending) setShowDeleteConfirm(false) }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              ...glass,
+              maxWidth: 360, width: '90%',
+              background: 'rgba(255,255,255,0.92)',
+            }}
+          >
+            <div style={{ fontSize: 18, fontWeight: 700, color: '#2C1810', marginBottom: 12 }}>
+              מחיקת חשבון לצמיתות
+            </div>
+            <div style={{ fontSize: 14, color: 'rgba(44,24,16,0.65)', marginBottom: 20, lineHeight: 1.6 }}>
+              האם אתה בטוח? פעולה זו תמחק לצמיתות את כל הנתונים שלך ואת חשבונך. לא ניתן לבטל פעולה זו.
+            </div>
+            {deleteError && (
+              <div style={{ color: '#EF476F', fontSize: 13, marginBottom: 14, padding: '8px 12px', background: 'rgba(239,71,111,0.08)', borderRadius: 10 }}>
+                {deleteError}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button
+                onClick={handleDeleteAccount}
+                disabled={isDeletePending}
+                style={{
+                  flex: 1, padding: '10px 0', borderRadius: 12, border: 'none',
+                  background: isDeletePending ? 'rgba(239,71,111,0.4)' : '#EF476F',
+                  color: 'white', fontSize: 14, fontWeight: 700, cursor: isDeletePending ? 'default' : 'pointer',
+                }}
+              >
+                {isDeletePending ? 'מוחק...' : 'כן, מחק לצמיתות'}
+              </button>
+              <button
+                onClick={() => { setShowDeleteConfirm(false); setDeleteError('') }}
+                disabled={isDeletePending}
+                style={{
+                  flex: 1, padding: '10px 0', borderRadius: 12, border: 'none',
+                  background: 'rgba(44,24,16,0.08)', color: '#2C1810',
+                  fontSize: 14, fontWeight: 600, cursor: 'pointer',
+                }}
+              >
+                ביטול
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -63,7 +63,8 @@ export async function GET(request: Request) {
         .eq('identity_id', identityRow.id)
         .single()
 
-      if (profile && !profile.onboarding_done) {
+      // No profile (e.g. partial delete) or onboarding not done → re-onboard
+      if (!profile || !profile.onboarding_done) {
         redirectResponse.headers.set('location', `${origin}/onboard`)
         return redirectResponse
       }

@@ -2,6 +2,7 @@
 
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 interface KidInput {
   name: string
@@ -43,17 +44,37 @@ export async function completeOnboarding(
     return { error: `שגיאה בזיהוי המשתמש: ${identityError?.message ?? 'שורה לא נמצאה'}` }
   }
 
-  // 3. Look up profile
-  const { data: profile, error: profileError } = await supabase
+  // 3. Look up or create profile (handles re-login after partial account deletion)
+  let profileId: string
+
+  const { data: existingProfile } = await supabase
     .from('profiles')
     .select('id')
     .eq('identity_id', identityRow.id)
-    .single()
+    .maybeSingle()
 
-  if (profileError || !profile) {
-    console.error('[onboard] profiles lookup failed:', profileError)
-    return { error: `פרופיל לא נמצא: ${profileError?.message ?? 'שגיאה'}` }
+  if (existingProfile) {
+    profileId = existingProfile.id
+  } else {
+    const admin = createAdminClient()
+    const { data: newProfile, error: createError } = await admin
+      .from('profiles')
+      .insert({
+        identity_id: identityRow.id,
+        full_name: user.user_metadata?.full_name ?? null,
+        avatar_url: user.user_metadata?.avatar_url ?? null,
+      })
+      .select('id')
+      .single()
+
+    if (createError || !newProfile) {
+      console.error('[onboard] profile creation failed:', createError)
+      return { error: 'שגיאה ביצירת הפרופיל. נסה שוב.' }
+    }
+    profileId = newProfile.id
   }
+
+  const profile = { id: profileId }
 
   // 4. Update profile
   const { error: updateError } = await supabase

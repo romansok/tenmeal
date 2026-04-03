@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 const PHONE_RE = /^0[2-9]\d{7,8}$/
 
@@ -365,4 +366,32 @@ export async function saveWeekOrders(input: SaveInput): Promise<SaveResult> {
   }
 
   return { success: true, mealsUsed }
+}
+
+// ─── Account deletion ─────────────────────────────────────────────────────────
+
+export async function deleteAccount(): Promise<{ success: true } | { error: string }> {
+  const supabase = createClient()
+
+  const { data: { user }, error: userError } = await supabase.auth.getUser()
+  if (userError || !user) return { error: 'לא מחובר. נסה להתחבר מחדש.' }
+
+  const { data: identity, error: identityError } = await supabase
+    .from('auth_identities').select('id')
+    .eq('provider', 'supabase').eq('provider_uid', user.id).single()
+  if (identityError || !identity) return { error: 'שגיאה בזיהוי המשתמש.' }
+
+  const admin = createAdminClient()
+
+  // Delete auth.users — must happen before removing auth_identities so the
+  // session stays valid long enough to sign out cleanly.
+  const { error: deleteAuthError } = await admin.auth.admin.deleteUser(user.id)
+  if (deleteAuthError) return { error: 'שגיאה במחיקת החשבון. נסה שוב.' }
+
+  // Delete auth_identities via admin client (no DELETE RLS policy for the user role).
+  // Cascades to: profiles → kids, subscriptions, orders, saved_orders, favorite_meals.
+  await admin.from('auth_identities').delete().eq('id', identity.id)
+
+  await supabase.auth.signOut()
+  return { success: true }
 }
