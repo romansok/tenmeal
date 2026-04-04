@@ -143,7 +143,9 @@ async function getProfileId(supabase: ReturnType<typeof createClient>): Promise<
 
 interface KidData {
   name: string
+  last_name: string | null
   class_name: string | null
+  phone: string | null
   emoji_avatar: string
   school_name: string | null
   school_address: string | null
@@ -173,7 +175,9 @@ export async function addKid(data: KidData): Promise<{ kid: KidRow } | { error: 
     .insert({
       profile_id: profileId,
       name: data.name.trim(),
+      last_name: data.last_name?.trim() || null,
       class_name: data.class_name?.trim() || null,
+      phone: data.phone?.trim() || null,
       emoji_avatar: data.emoji_avatar,
       school_name: data.school_name?.trim() || null,
       school_address: data.school_address?.trim() || null,
@@ -192,7 +196,7 @@ export async function addKid(data: KidData): Promise<{ kid: KidRow } | { error: 
 
   const { data: full } = await supabase
     .from('kids')
-    .select('id, name, class_name, emoji_avatar, sort_order, kid_dietary_restrictions(dietary_tag_id, dietary_tags(id, label_he))')
+    .select('id, name, last_name, class_name, phone, emoji_avatar, sort_order, kid_dietary_restrictions(dietary_tag_id, dietary_tags(id, label_he))')
     .eq('id', kidRow.id)
     .single()
 
@@ -214,7 +218,9 @@ export async function updateKid(kidId: string, data: KidData): Promise<{ success
     .from('kids')
     .update({
       name: data.name.trim(),
+      last_name: data.last_name?.trim() || null,
       class_name: data.class_name?.trim() || null,
+      phone: data.phone?.trim() || null,
       emoji_avatar: data.emoji_avatar,
       school_name: data.school_name?.trim() || null,
       school_address: data.school_address?.trim() || null,

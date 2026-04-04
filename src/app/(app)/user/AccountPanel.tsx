@@ -24,8 +24,10 @@ const glass: React.CSSProperties = {
 }
 
 interface KidFormData {
-  name: string
+  first_name: string
+  last_name: string
   class_name: string
+  phone: string
   emoji_avatar: string
   school_name: string
   school_address: string
@@ -33,13 +35,15 @@ interface KidFormData {
 }
 
 function emptyForm(): KidFormData {
-  return { name: '', class_name: '', emoji_avatar: '🧒', school_name: '', school_address: '', dietary_tag_ids: [] }
+  return { first_name: '', last_name: '', class_name: '', phone: '', emoji_avatar: '🧒', school_name: '', school_address: '', dietary_tag_ids: [] }
 }
 
 function formFromKid(kid: Kid): KidFormData {
   return {
-    name: kid.name,
+    first_name: kid.name,
+    last_name: kid.last_name ?? '',
     class_name: kid.class_name ?? '',
+    phone: kid.phone ?? '',
     emoji_avatar: kid.emoji_avatar,
     school_name: kid.school_name ?? '',
     school_address: kid.school_address ?? '',
@@ -125,8 +129,8 @@ export default function AccountPanel({ profile, kids, dietaryTags, onKidsChange 
   }
 
   function handleKidSave() {
-    if (!formData.name.trim()) {
-      setFormError('יש להזין שם ילד.')
+    if (!formData.first_name.trim()) {
+      setFormError('יש להזין שם פרטי.')
       return
     }
     setFormError('')
@@ -134,8 +138,10 @@ export default function AccountPanel({ profile, kids, dietaryTags, onKidsChange 
     if (editingKidId === 'new') {
       startKidTransition(async () => {
         const result = await addKid({
-          name: formData.name,
+          name: formData.first_name,
+          last_name: formData.last_name || null,
           class_name: formData.class_name || null,
+          phone: formData.phone || null,
           emoji_avatar: formData.emoji_avatar,
           school_name: formData.school_name || null,
           school_address: formData.school_address || null,
@@ -152,8 +158,10 @@ export default function AccountPanel({ profile, kids, dietaryTags, onKidsChange 
       const kidId = editingKidId
       startKidTransition(async () => {
         const result = await updateKid(kidId, {
-          name: formData.name,
+          name: formData.first_name,
+          last_name: formData.last_name || null,
           class_name: formData.class_name || null,
+          phone: formData.phone || null,
           emoji_avatar: formData.emoji_avatar,
           school_name: formData.school_name || null,
           school_address: formData.school_address || null,
@@ -167,8 +175,10 @@ export default function AccountPanel({ profile, kids, dietaryTags, onKidsChange 
               k.id === kidId
                 ? {
                     ...k,
-                    name: formData.name.trim(),
+                    name: formData.first_name.trim(),
+                    last_name: formData.last_name.trim() || null,
                     class_name: formData.class_name.trim() || null,
+                    phone: formData.phone.trim() || null,
                     emoji_avatar: formData.emoji_avatar,
                     school_name: formData.school_name.trim() || null,
                     school_address: formData.school_address.trim() || null,
@@ -232,31 +242,58 @@ export default function AccountPanel({ profile, kids, dietaryTags, onKidsChange 
         </div>
       </div>
 
-      {/* Name */}
-      <div style={{ marginBottom: 10 }}>
-        <div style={{ fontSize: 12, color: 'rgba(44,24,16,0.5)', fontWeight: 600, marginBottom: 4 }}>שם *</div>
-        <input
-          type="text"
-          value={formData.name}
-          onChange={(e) => setFormData((p) => ({ ...p, name: e.target.value }))}
-          className="input-field"
-          style={{ padding: '8px 12px', width: '100%', boxSizing: 'border-box' }}
-          placeholder="שם הילד/ה"
-          autoFocus
-        />
+      {/* First + Last name */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 12, color: 'rgba(44,24,16,0.5)', fontWeight: 600, marginBottom: 4 }}>שם פרטי *</div>
+          <input
+            type="text"
+            value={formData.first_name}
+            onChange={(e) => setFormData((p) => ({ ...p, first_name: e.target.value }))}
+            className="input-field"
+            style={{ padding: '8px 12px', width: '100%', boxSizing: 'border-box' }}
+            placeholder="שם פרטי"
+            autoFocus
+          />
+        </div>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 12, color: 'rgba(44,24,16,0.5)', fontWeight: 600, marginBottom: 4 }}>שם משפחה</div>
+          <input
+            type="text"
+            value={formData.last_name}
+            onChange={(e) => setFormData((p) => ({ ...p, last_name: e.target.value }))}
+            className="input-field"
+            style={{ padding: '8px 12px', width: '100%', boxSizing: 'border-box' }}
+            placeholder="שם משפחה"
+          />
+        </div>
       </div>
 
-      {/* Class */}
-      <div style={{ marginBottom: 10 }}>
-        <div style={{ fontSize: 12, color: 'rgba(44,24,16,0.5)', fontWeight: 600, marginBottom: 4 }}>כיתה</div>
-        <input
-          type="text"
-          value={formData.class_name}
-          onChange={(e) => setFormData((p) => ({ ...p, class_name: e.target.value }))}
-          className="input-field"
-          style={{ padding: '8px 12px', width: '100%', boxSizing: 'border-box' }}
-          placeholder="למשל: ב׳"
-        />
+      {/* Class + Phone */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 12, color: 'rgba(44,24,16,0.5)', fontWeight: 600, marginBottom: 4 }}>כיתה</div>
+          <input
+            type="text"
+            value={formData.class_name}
+            onChange={(e) => setFormData((p) => ({ ...p, class_name: e.target.value }))}
+            className="input-field"
+            style={{ padding: '8px 12px', width: '100%', boxSizing: 'border-box' }}
+            placeholder="למשל: ב׳"
+          />
+        </div>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 12, color: 'rgba(44,24,16,0.5)', fontWeight: 600, marginBottom: 4 }}>טלפון ילד/ה</div>
+          <input
+            type="tel"
+            value={formData.phone}
+            onChange={(e) => setFormData((p) => ({ ...p, phone: e.target.value }))}
+            className="input-field"
+            style={{ padding: '8px 12px', width: '100%', boxSizing: 'border-box' }}
+            placeholder="05X-XXXXXXX"
+            dir="ltr"
+          />
+        </div>
       </div>
 
       {/* School name */}
@@ -502,7 +539,9 @@ export default function AccountPanel({ profile, kids, dietaryTags, onKidsChange 
                 >
                   <span style={{ fontSize: 24, flexShrink: 0 }}>{kid.emoji_avatar}</span>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: '#2C1810' }}>{kid.name}</div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: '#2C1810' }}>
+                      {kid.name}{kid.last_name ? ` ${kid.last_name}` : ''}
+                    </div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginTop: 2 }}>
                       {kid.class_name && (
                         <span style={{ fontSize: 12, color: 'rgba(44,24,16,0.5)', fontWeight: 600 }}>
@@ -512,6 +551,11 @@ export default function AccountPanel({ profile, kids, dietaryTags, onKidsChange 
                       {kid.school_name && (
                         <span style={{ fontSize: 12, color: 'rgba(44,24,16,0.5)' }}>
                           {kid.school_name}
+                        </span>
+                      )}
+                      {kid.phone && (
+                        <span style={{ fontSize: 12, color: 'rgba(44,24,16,0.5)', direction: 'ltr', unicodeBidi: 'plaintext' as const }}>
+                          {kid.phone}
                         </span>
                       )}
                       {kid.kid_dietary_restrictions.map((r) =>

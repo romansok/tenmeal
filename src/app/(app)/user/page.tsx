@@ -49,7 +49,7 @@ export default async function UserPage() {
     supabase
       .from('kids')
       .select(
-        'id, name, class_name, emoji_avatar, sort_order, school_name, school_address, kid_dietary_restrictions(dietary_tag_id, dietary_tags(id, label_he))'
+        'id, name, last_name, class_name, phone, emoji_avatar, sort_order, school_name, school_address, kid_dietary_restrictions(dietary_tag_id, dietary_tags(id, label_he))'
       )
       .eq('profile_id', profile.id)
       .is('deleted_at', null)

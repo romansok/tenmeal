@@ -4,7 +4,9 @@ export interface KidRestriction { dietary_tag_id: string; dietary_tags: DietaryT
 export interface Kid {
   id: string
   name: string
+  last_name: string | null
   class_name: string | null
+  phone: string | null
   emoji_avatar: string
   sort_order: number
   school_name: string | null
