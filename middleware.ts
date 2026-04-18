@@ -36,12 +36,12 @@ export async function middleware(request: NextRequest) {
 
   // Redirect authenticated users away from /login
   if (user && pathname === '/login') {
-    return NextResponse.redirect(new URL('/dashboard', request.url))
+    return NextResponse.redirect(new URL('/user', request.url))
   }
 
   // Protect all routes under /(app) group
   const isAppRoute =
-    pathname.startsWith('/dashboard') ||
+    pathname.startsWith('/user') ||
     pathname.startsWith('/onboard')
 
   if (!user && isAppRoute) {

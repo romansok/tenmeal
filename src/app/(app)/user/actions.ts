@@ -256,122 +256,183 @@ export async function removeKid(kidId: string): Promise<{ success: true } | { er
   return { success: true }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Single-day auto-save ────────────────────────────────────────────────────
 
-interface DayInput { date: string; menuItemId: string | null; notes: string }
-interface SaveInput { kidId: string; profileId: string; days: DayInput[] }
-type SaveResult = { success: true; mealsUsed: number } | { error: string }
+interface SaveDayInput {
+  kidId: string
+  profileId: string
+  date: string
+  menuItemId: string | null
+  notes: string
+}
 
-export async function saveWeekOrders(input: SaveInput): Promise<SaveResult> {
+export async function saveDayOrder(
+  input: SaveDayInput
+): Promise<{ success: true; mealsUsed: number } | { error: string }> {
   const supabase = createClient()
 
   const {
     data: { user },
     error: userError,
   } = await supabase.auth.getUser()
-
   if (userError || !user) return { error: 'לא מחובר. נסה להתחבר מחדש.' }
 
-  let mealsUsed = 0
+  // Server-side date guard: only allow tomorrow+
+  const today = new Date()
+  const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+  if (input.date <= todayKey) return { error: 'ניתן לשנות ארוחות רק מיום מחר והלאה.' }
 
-  for (const day of input.days) {
-    // Find existing order for this kid + date
-    const { data: existingOrders } = await supabase
-      .from('orders')
-      .select('id, order_items(id, menu_item_id)')
-      .eq('profile_id', input.profileId)
-      .eq('kid_id', input.kidId)
-      .eq('delivery_date', day.date)
-      .is('deleted_at', null)
-      .limit(1)
+  // Find existing order for this kid + date
+  const { data: existingOrders } = await supabase
+    .from('orders')
+    .select('id, order_items(id, menu_item_id)')
+    .eq('profile_id', input.profileId)
+    .eq('kid_id', input.kidId)
+    .eq('delivery_date', input.date)
+    .is('deleted_at', null)
+    .limit(1)
 
-    const existing = existingOrders?.[0] ?? null
+  const existing = existingOrders?.[0] ?? null
 
-    if (day.menuItemId) {
-      if (!existing) {
-        // Insert new order + order_item
-        const { data: newOrder, error: orderErr } = await supabase
-          .from('orders')
-          .insert({
-            profile_id: input.profileId,
-            kid_id: input.kidId,
-            delivery_date: day.date,
-            notes: day.notes || null,
-            status: 'pending',
-          })
-          .select('id')
-          .single()
+  if (input.menuItemId) {
+    // Fetch price for menu item
+    const { data: menuItem } = await supabase
+      .from('menu_items')
+      .select('id, price_agorot')
+      .eq('id', input.menuItemId)
+      .single()
+    const price = menuItem?.price_agorot ?? 0
 
-        if (orderErr || !newOrder) return { error: 'שגיאה ביצירת הזמנה. נסה שוב.' }
+    if (!existing) {
+      // New meal — insert order + order_item
+      const { data: newOrder, error: orderErr } = await supabase
+        .from('orders')
+        .insert({
+          profile_id: input.profileId,
+          kid_id: input.kidId,
+          delivery_date: input.date,
+          notes: input.notes || null,
+          status: 'pending',
+        })
+        .select('id')
+        .single()
+      if (orderErr || !newOrder) return { error: 'שגיאה ביצירת הזמנה. נסה שוב.' }
 
-        const { error: itemErr } = await supabase
-          .from('order_items')
-          .insert({ order_id: newOrder.id, menu_item_id: day.menuItemId, quantity: 1 })
+      const { error: itemErr } = await supabase
+        .from('order_items')
+        .insert({ order_id: newOrder.id, menu_item_id: input.menuItemId, quantity: 1, unit_price_agorot: price })
+      if (itemErr) return { error: 'שגיאה בהוספת פריט להזמנה.' }
 
-        if (itemErr) return { error: 'שגיאה בהוספת פריט להזמנה.' }
-
-        mealsUsed++
-      } else {
-        const existingItemMenuId = (existing.order_items as any[])?.[0]?.menu_item_id ?? null
-        if (existingItemMenuId === day.menuItemId) {
-          // Same item — update notes only
-          await supabase
-            .from('orders')
-            .update({ notes: day.notes || null })
-            .eq('id', existing.id)
-        } else {
-          // Different item — update notes + swap order_item
-          await supabase
-            .from('orders')
-            .update({ notes: day.notes || null })
-            .eq('id', existing.id)
-
-          await supabase
-            .from('order_items')
-            .delete()
-            .eq('order_id', existing.id)
-
-          await supabase
-            .from('order_items')
-            .insert({ order_id: existing.id, menu_item_id: day.menuItemId, quantity: 1 })
-        }
-      }
-    } else {
-      // menuItemId is null — soft-delete existing order if present
-      if (existing) {
-        await supabase
-          .from('orders')
-          .update({ deleted_at: new Date().toISOString() })
-          .eq('id', existing.id)
-      }
-    }
-  }
-
-  // FIFO decrement: deplete oldest active subscription first
-  if (mealsUsed > 0) {
-    const now = new Date().toISOString()
-    const { data: activeSubs } = await supabase
-      .from('subscriptions')
-      .select('id, meals_remaining')
-      .eq('profile_id', input.profileId)
-      .eq('status', 'active')
-      .gt('meals_remaining', 0)
-      .or(`expires_at.is.null,expires_at.gt.${now}`)
-      .order('starts_at', { ascending: true })
-
-    let toDeduct = mealsUsed
-    for (const sub of activeSubs ?? []) {
-      if (toDeduct <= 0) break
-      const use = Math.min(toDeduct, sub.meals_remaining)
-      await supabase
+      // FIFO deplete 1 meal
+      const now = new Date().toISOString()
+      const { data: activeSubs } = await supabase
         .from('subscriptions')
-        .update({ meals_remaining: sub.meals_remaining - use })
-        .eq('id', sub.id)
-      toDeduct -= use
+        .select('id, meals_remaining')
+        .eq('profile_id', input.profileId)
+        .eq('status', 'active')
+        .gt('meals_remaining', 0)
+        .or(`expires_at.is.null,expires_at.gt.${now}`)
+        .order('starts_at', { ascending: true })
+        .limit(1)
+
+      const sub = activeSubs?.[0]
+      if (sub) {
+        await supabase
+          .from('subscriptions')
+          .update({ meals_remaining: sub.meals_remaining - 1 })
+          .eq('id', sub.id)
+      }
+
+      return { success: true, mealsUsed: 1 }
+    } else {
+      const existingItemMenuId = (existing.order_items as any[])?.[0]?.menu_item_id ?? null
+      if (existingItemMenuId === input.menuItemId) {
+        // Same item — update notes only
+        await supabase.from('orders').update({ notes: input.notes || null }).eq('id', existing.id)
+      } else {
+        // Swap meal — update notes + replace order_item
+        await supabase.from('orders').update({ notes: input.notes || null }).eq('id', existing.id)
+        await supabase.from('order_items').delete().eq('order_id', existing.id)
+        const { error: swapErr } = await supabase
+          .from('order_items')
+          .insert({ order_id: existing.id, menu_item_id: input.menuItemId, quantity: 1, unit_price_agorot: price })
+        if (swapErr) return { error: 'שגיאה בעדכון פריט בהזמנה.' }
+      }
+      return { success: true, mealsUsed: 0 }
     }
+  } else {
+    // Cancel — soft-delete existing order if present
+    if (existing) {
+      const hadMeal = (existing.order_items as any[])?.length > 0
+      await supabase.from('orders').update({ deleted_at: new Date().toISOString() }).eq('id', existing.id)
+
+      if (hadMeal) {
+        // FIFO refund 1 meal
+        const now = new Date().toISOString()
+        const { data: activeSubs } = await supabase
+          .from('subscriptions')
+          .select('id, meals_remaining, subscription_plans(meals_count)')
+          .eq('profile_id', input.profileId)
+          .eq('status', 'active')
+          .or(`expires_at.is.null,expires_at.gt.${now}`)
+          .order('starts_at', { ascending: true })
+
+        for (const sub of (activeSubs ?? []) as any[]) {
+          const cap: number = sub.subscription_plans?.meals_count ?? Infinity
+          const space = Math.max(0, cap - sub.meals_remaining)
+          if (space > 0) {
+            await supabase
+              .from('subscriptions')
+              .update({ meals_remaining: sub.meals_remaining + 1 })
+              .eq('id', sub.id)
+            break
+          }
+        }
+        return { success: true, mealsUsed: -1 }
+      }
+    }
+    return { success: true, mealsUsed: 0 }
+  }
+}
+
+// ─── Kid favorites ────────────────────────────────────────────────────────────
+
+export async function toggleKidFavorite(
+  kidId: string,
+  menuItemId: string,
+  isFavorite: boolean
+): Promise<{ success: true } | { error: string }> {
+  if (!kidId || !menuItemId) return { error: 'נתונים חסרים.' }
+
+  const supabase = createClient()
+  const profileId = await getProfileId(supabase)
+  if (!profileId) return { error: 'לא מחובר. נסה להתחבר מחדש.' }
+
+  // Verify kid belongs to this profile (defense-in-depth; RLS also enforces)
+  const { data: kid } = await supabase
+    .from('kids')
+    .select('id')
+    .eq('id', kidId)
+    .eq('profile_id', profileId)
+    .is('deleted_at', null)
+    .single()
+  if (!kid) return { error: 'ילד לא נמצא.' }
+
+  if (isFavorite) {
+    const { error } = await supabase
+      .from('kid_favorite_meals')
+      .insert({ kid_id: kidId, menu_item_id: menuItemId })
+    if (error && error.code !== '23505') return { error: 'שגיאה בשמירת המועדפים. נסה שוב.' }
+  } else {
+    const { error } = await supabase
+      .from('kid_favorite_meals')
+      .delete()
+      .eq('kid_id', kidId)
+      .eq('menu_item_id', menuItemId)
+    if (error) return { error: 'שגיאה בהסרת המועדפים. נסה שוב.' }
   }
 
-  return { success: true, mealsUsed }
+  return { success: true }
 }
 
 // ─── Account deletion ─────────────────────────────────────────────────────────

@@ -57,6 +57,15 @@ export interface MenuItem {
   image_url: string | null
 }
 
+export interface MenuItemWithTags extends MenuItem {
+  dietary_tag_ids: string[]
+}
+
+export interface KidFavorite {
+  kid_id: string
+  menu_item_id: string
+}
+
 export interface OrderItem { id: string; menu_item_id: string; quantity: number }
 export interface ExistingOrder {
   id: string

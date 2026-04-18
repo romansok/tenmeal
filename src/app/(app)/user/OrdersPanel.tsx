@@ -1,17 +1,30 @@
 'use client'
 
-import { useState, useTransition, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { saveWeekOrders } from './actions'
-import type { Kid, MenuItem, ExistingOrder, DayPlan, Subscription } from './types'
+import { saveDayOrder } from './actions'
+import type { Kid, MenuItem, ExistingOrder, DayPlan, Subscription, KidFavorite } from './types'
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const WEEK_OFFSETS = [-1, 0, 1, 2] as const
+type WeekOffset = typeof WEEK_OFFSETS[number]
+
+const SHORT_DAY = ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳']
+const LONG_DAY = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי']
+const HE_MONTHS = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר']
+
+function getWeekLabel(offset: WeekOffset): string {
+  if (offset === -1) return 'שבוע שעבר'
+  if (offset === 0)  return 'שבוע נוכחי'
+  if (offset === 1)  return 'שבוע הבא'
+  return 'בעוד שבועיים'
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function toDateKey(d: Date): string {
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
 function getWeekStart(weekOffset: number): Date {
@@ -22,66 +35,38 @@ function getWeekStart(weekOffset: number): Date {
   return sun
 }
 
-function getSchoolWeekDates(weekStart: Date): Date[] {
-  return [0, 1, 2, 3, 4].map((i) => {
+function getOrderableDates(weekStart: Date): Date[] {
+  return [0, 1, 2, 3, 4, 5].map((i) => {
     const d = new Date(weekStart)
     d.setDate(weekStart.getDate() + i)
     return d
   })
 }
 
-const HE_MONTHS = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר']
-
-function formatWeekLabel(sun: Date, thu: Date): string {
-  const sm = HE_MONTHS[sun.getMonth()]
-  const em = HE_MONTHS[thu.getMonth()]
-  if (sun.getMonth() === thu.getMonth()) {
-    return `${sun.getDate()}–${thu.getDate()} ב${sm} ${sun.getFullYear()}`
+function formatWeekRange(ws: Date): string {
+  const dates = getOrderableDates(ws)
+  const sun = dates[0]
+  const fri = dates[dates.length - 1]
+  if (sun.getMonth() === fri.getMonth()) {
+    return `${sun.getDate()}–${fri.getDate()} ${HE_MONTHS[sun.getMonth()]}`
   }
-  return `${sun.getDate()} ב${sm} – ${thu.getDate()} ב${em} ${thu.getFullYear()}`
+  return `${sun.getDate()} ${HE_MONTHS[sun.getMonth()]} – ${fri.getDate()} ${HE_MONTHS[fri.getMonth()]}`
 }
 
-const DAY_NAMES = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי']
-
-function formatDayLabel(d: Date): string {
-  const dayIndex = d.getDay()
-  const name = DAY_NAMES[dayIndex] ?? ''
-  return `${name} ${d.getDate()}.${d.getMonth() + 1}`
+function formatExpandedLabel(dateKey: string): string {
+  const d = new Date(dateKey)
+  return `יום ${LONG_DAY[d.getDay()]} ${d.getDate()}.${d.getMonth() + 1}`
 }
 
-function buildInitialDayPlans(
-  orders: ExistingOrder[],
-  kidId: string,
-  dates: string[]
-): Record<string, DayPlan> {
-  const result: Record<string, DayPlan> = {}
-  for (const date of dates) {
-    const order = orders.find((o) => o.kid_id === kidId && o.delivery_date === date)
-    result[date] = {
-      menuItemId: order?.order_items?.[0]?.menu_item_id ?? null,
-      notes: order?.notes ?? '',
-    }
-  }
-  return result
-}
+// ─── Types ────────────────────────────────────────────────────────────────────
 
-function isDirty(current: Record<string, DayPlan>, initial: Record<string, DayPlan>): boolean {
-  for (const key of Object.keys(current)) {
-    if (current[key].menuItemId !== initial[key]?.menuItemId) return true
-    if (current[key].notes !== initial[key]?.notes) return true
-  }
-  return false
+interface WeekMeta {
+  offset: WeekOffset
+  ws: Date
+  dates: Date[]
+  dateKeys: string[]
+  weekEnd: Date
 }
-
-function countPlanned(dayPlans: Record<string, DayPlan>): number {
-  return Object.values(dayPlans).filter((p) => p.menuItemId !== null).length
-}
-
-function isDeadlineDay(): boolean {
-  return new Date().getDay() >= 5
-}
-
-// ─── Component ────────────────────────────────────────────────────────────────
 
 interface OrdersPanelProps {
   profileId: string
@@ -91,7 +76,10 @@ interface OrdersPanelProps {
   initialWeekOrders: ExistingOrder[]
   mealsRemaining: number
   onMealsUsed: (n: number) => void
+  kidFavorites: KidFavorite[]
 }
+
+// ─── Component ────────────────────────────────────────────────────────────────
 
 export default function OrdersPanel({
   profileId,
@@ -101,113 +89,241 @@ export default function OrdersPanel({
   initialWeekOrders,
   mealsRemaining,
   onMealsUsed,
+  kidFavorites,
 }: OrdersPanelProps) {
-  const initWeekStart = getWeekStart(0)
-  const initWeekDates = getSchoolWeekDates(initWeekStart)
-  const initWeekDateKeys = initWeekDates.map(toDateKey)
+  const todayKey = toDateKey(new Date())
+
+  // Pre-compute week metadata
+  const allWeeks: WeekMeta[] = WEEK_OFFSETS.map((offset) => {
+    const ws = getWeekStart(offset)
+    const dates = getOrderableDates(ws)
+    return { offset, ws, dates, dateKeys: dates.map(toDateKey), weekEnd: dates[dates.length - 1] }
+  })
+
   const initKidId = kids[0]?.id ?? ''
-  const builtInitial = buildInitialDayPlans(initialWeekOrders, initKidId, initWeekDateKeys)
+
+  // Seed current week from SSR data
+  function buildSsrPlans(): Record<string, DayPlan> {
+    const plans: Record<string, DayPlan> = {}
+    const currentWeek = allWeeks.find((w) => w.offset === 0)!
+    for (const dateKey of currentWeek.dateKeys) {
+      const order = initialWeekOrders.find((o) => o.kid_id === initKidId && o.delivery_date === dateKey)
+      plans[dateKey] = {
+        menuItemId: order?.order_items?.[0]?.menu_item_id ?? null,
+        notes: order?.notes ?? '',
+      }
+    }
+    return plans
+  }
 
   const [selectedKidId, setSelectedKidId] = useState(initKidId)
-  const [weekOffset, setWeekOffset] = useState(0)
-  const [dayPlans, setDayPlans] = useState<Record<string, DayPlan>>(builtInitial)
-  const [initialDayPlans, setInitialDayPlans] = useState<Record<string, DayPlan>>(builtInitial)
-  const [openMealSelector, setOpenMealSelector] = useState<string | null>(null)
-  const [saveError, setSaveError] = useState<string | null>(null)
-  const [isPending, startTransition] = useTransition()
+  const [dayPlans, setDayPlans] = useState<Record<string, DayPlan>>(buildSsrPlans)
+  const [expandedDay, setExpandedDay] = useState<string | null>(null)
+  const [savingDays, setSavingDays] = useState<Set<string>>(new Set())
+  const [dayErrors, setDayErrors] = useState<Record<string, string>>({})
+  const [fillErrors, setFillErrors] = useState<Partial<Record<WeekOffset, string>>>({})
+  const notesTimers = useRef<Record<string, NodeJS.Timeout>>({})
 
-  const weekStart = getWeekStart(weekOffset)
-  const weekDates = getSchoolWeekDates(weekStart)
-  const weekDateKeys = weekDates.map(toDateKey)
-  const dirty = isDirty(dayPlans, initialDayPlans)
-  const plannedCount = countPlanned(dayPlans)
+  // Favorites for selected kid
+  const favMealIds = new Set(
+    kidFavorites.filter((f) => f.kid_id === selectedKidId).map((f) => f.menu_item_id)
+  )
+  const favMenuItems = menuItems.filter((m) => favMealIds.has(m.id))
 
-  const isFirstRender = useRef(true)
-
+  // Load all 4 weeks whenever kid changes
   useEffect(() => {
-    if (isFirstRender.current) {
-      isFirstRender.current = false
-      return
-    }
+    if (!selectedKidId) return
     const supabase = createClient()
-    const ws = toDateKey(getWeekStart(weekOffset))
-    const we = toDateKey(getSchoolWeekDates(getWeekStart(weekOffset))[4])
+    const startDate = allWeeks[0].dateKeys[0]
+    const endDate = toDateKey(allWeeks[allWeeks.length - 1].weekEnd)
+
     supabase
       .from('orders')
       .select('id, kid_id, delivery_date, notes, status, order_items(id, menu_item_id, quantity)')
       .eq('kid_id', selectedKidId)
-      .gte('delivery_date', ws)
-      .lte('delivery_date', we)
+      .gte('delivery_date', startDate)
+      .lte('delivery_date', endDate)
       .is('deleted_at', null)
       .then(({ data }) => {
         const orders = (data ?? []) as ExistingOrder[]
-        const newDateKeys = getSchoolWeekDates(getWeekStart(weekOffset)).map(toDateKey)
-        const plans = buildInitialDayPlans(orders, selectedKidId, newDateKeys)
+        const plans: Record<string, DayPlan> = {}
+        for (const week of allWeeks) {
+          for (const dateKey of week.dateKeys) {
+            const order = orders.find((o) => o.delivery_date === dateKey)
+            plans[dateKey] = {
+              menuItemId: order?.order_items?.[0]?.menu_item_id ?? null,
+              notes: order?.notes ?? '',
+            }
+          }
+        }
         setDayPlans(plans)
-        setInitialDayPlans(plans)
+        setExpandedDay(null)
+        setSavingDays(new Set())
+        setDayErrors({})
       })
-  }, [weekOffset, selectedKidId])
+  }, [selectedKidId]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  function handleSave() {
-    setSaveError(null)
-    startTransition(async () => {
-      const days = weekDateKeys.map((date) => ({
-        date,
-        menuItemId: dayPlans[date]?.menuItemId ?? null,
-        notes: dayPlans[date]?.notes ?? '',
-      }))
+  // ── Per-week helpers ──────────────────────────────────────────────────────
 
-      const result = await saveWeekOrders({
-        kidId: selectedKidId,
-        profileId,
-        days,
-      })
-
-      if ('error' in result) {
-        setSaveError(result.error)
-      } else {
-        onMealsUsed(result.mealsUsed)
-        setInitialDayPlans({ ...dayPlans })
-      }
-    })
+  function countPlanned(week: WeekMeta): number {
+    return week.dateKeys.filter((k) => dayPlans[k]?.menuItemId != null).length
   }
 
-  function toggleDay(dateKey: string) {
-    setDayPlans((prev) => {
-      const current = prev[dateKey]
-      if (current.menuItemId) {
-        return { ...prev, [dateKey]: { menuItemId: null, notes: '' } }
-      } else {
-        setOpenMealSelector(dateKey)
-        return { ...prev, [dateKey]: { menuItemId: null, notes: '' } }
-      }
+  function countNewMealsForFill(week: WeekMeta): number {
+    const prevWeek = allWeeks.find((w) => w.offset === week.offset - 1)
+    if (!prevWeek) return 0
+    let count = 0
+    for (let i = 0; i < week.dateKeys.length; i++) {
+      const currKey = week.dateKeys[i]
+      const prevKey = prevWeek.dateKeys[i]
+      if (currKey <= todayKey) continue
+      if (dayPlans[prevKey]?.menuItemId && !dayPlans[currKey]?.menuItemId) count++
+    }
+    return count
+  }
+
+  // ── Auto-save helper ─────────────────────────────────────────────────────
+
+  const persistDay = useCallback(async (
+    dateKey: string,
+    menuItemId: string | null,
+    notes: string,
+    prevPlan: DayPlan | null,
+    isNewMeal: boolean,
+    isCancellation: boolean,
+  ) => {
+    setSavingDays((prev) => new Set(prev).add(dateKey))
+    setDayErrors((prev) => { const next = { ...prev }; delete next[dateKey]; return next })
+
+    const result = await saveDayOrder({
+      kidId: selectedKidId,
+      profileId,
+      date: dateKey,
+      menuItemId,
+      notes,
     })
+
+    setSavingDays((prev) => { const next = new Set(prev); next.delete(dateKey); return next })
+
+    if ('error' in result) {
+      // Rollback
+      if (prevPlan) {
+        setDayPlans((prev) => ({ ...prev, [dateKey]: prevPlan }))
+      }
+      if (isNewMeal) onMealsUsed(-1)
+      if (isCancellation) onMealsUsed(1)
+      setDayErrors((prev) => ({ ...prev, [dateKey]: result.error }))
+    }
+  }, [selectedKidId, profileId, onMealsUsed])
+
+  // ── Actions ───────────────────────────────────────────────────────────────
+
+  function handleKidChange(kidId: string) {
+    setSelectedKidId(kidId)
+    setDayErrors({})
+    setFillErrors({})
+    setExpandedDay(null)
   }
 
   function selectMeal(dateKey: string, menuItemId: string) {
-    setDayPlans((prev) => ({
-      ...prev,
-      [dateKey]: { ...prev[dateKey], menuItemId },
-    }))
-    setOpenMealSelector(null)
+    if (!subscription) return
+    const prevPlan = dayPlans[dateKey] ?? { menuItemId: null, notes: '' }
+    const isNewMeal = prevPlan.menuItemId === null
+    if (isNewMeal && mealsRemaining <= 0) return
+    if (savingDays.has(dateKey)) return
+
+    // Optimistic update
+    const newPlan = { ...prevPlan, menuItemId }
+    setDayPlans((prev) => ({ ...prev, [dateKey]: newPlan }))
+    setExpandedDay(null)
+    if (isNewMeal) onMealsUsed(1)
+
+    persistDay(dateKey, menuItemId, prevPlan.notes, prevPlan, isNewMeal, false)
+  }
+
+  function cancelDay(dateKey: string) {
+    const prevPlan = dayPlans[dateKey] ?? { menuItemId: null, notes: '' }
+    if (!prevPlan.menuItemId) return
+    if (savingDays.has(dateKey)) return
+
+    // Optimistic update
+    setDayPlans((prev) => ({ ...prev, [dateKey]: { menuItemId: null, notes: '' } }))
+    setExpandedDay(null)
+    onMealsUsed(-1)
+
+    persistDay(dateKey, null, '', prevPlan, false, true)
   }
 
   function updateNotes(dateKey: string, notes: string) {
-    setDayPlans((prev) => ({
-      ...prev,
-      [dateKey]: { ...prev[dateKey], notes },
-    }))
+    setDayPlans((prev) => ({ ...prev, [dateKey]: { ...prev[dateKey], notes } }))
+
+    // Debounce notes save
+    if (notesTimers.current[dateKey]) clearTimeout(notesTimers.current[dateKey])
+    notesTimers.current[dateKey] = setTimeout(() => {
+      const plan = dayPlans[dateKey]
+      if (plan?.menuItemId) {
+        saveDayOrder({ kidId: selectedKidId, profileId, date: dateKey, menuItemId: plan.menuItemId, notes })
+      }
+    }, 500)
   }
 
+  function fillWeekFromPrev(week: WeekMeta) {
+    const prevWeek = allWeeks.find((w) => w.offset === week.offset - 1)
+    if (!prevWeek) return
+
+    const needed = countNewMealsForFill(week)
+    if (needed === 0) {
+      setFillErrors((e) => ({ ...e, [week.offset]: 'אין ארוחות מהשבוע הקודם להעתיק' }))
+      return
+    }
+    if (needed > mealsRemaining) {
+      const missing = needed - mealsRemaining
+      setFillErrors((e) => ({ ...e, [week.offset]: `אין מספיק ארוחות במנוי (חסרות ${missing})` }))
+      return
+    }
+    setFillErrors((e) => ({ ...e, [week.offset]: undefined }))
+
+    // Collect days to fill
+    const daysToFill: { currKey: string; prevPlan: DayPlan }[] = []
+    for (let i = 0; i < week.dateKeys.length; i++) {
+      const currKey = week.dateKeys[i]
+      const prevKey = prevWeek.dateKeys[i]
+      if (currKey <= todayKey) continue
+      const prevPlan = dayPlans[prevKey]
+      if (prevPlan?.menuItemId && !dayPlans[currKey]?.menuItemId) {
+        daysToFill.push({ currKey, prevPlan })
+      }
+    }
+
+    // Optimistic update all at once
+    setDayPlans((prev) => {
+      const next = { ...prev }
+      for (const { currKey, prevPlan } of daysToFill) {
+        next[currKey] = { menuItemId: prevPlan.menuItemId, notes: prevPlan.notes }
+      }
+      return next
+    })
+    onMealsUsed(daysToFill.length)
+
+    // Fire parallel saves
+    for (const { currKey, prevPlan } of daysToFill) {
+      const prevEmpty = { menuItemId: null, notes: '' }
+      persistDay(currKey, prevPlan.menuItemId!, prevPlan.notes, prevEmpty, true, false)
+    }
+  }
+
+  // ─── Render ────────────────────────────────────────────────────────────────
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, paddingBottom: 80 }}>
-      {/* Kid switcher */}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, paddingBottom: 32 }}>
+
+      {/* Kid selector */}
       {kids.length > 0 && (
         <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4 }}>
           {kids.map((kid) => (
             <button
               key={kid.id}
-              onClick={() => setSelectedKidId(kid.id)}
+              onClick={() => handleKidChange(kid.id)}
               className={`kid-pill${selectedKidId === kid.id ? ' kid-pill-active' : ''}`}
               style={{ border: 'none' }}
             >
@@ -218,212 +334,371 @@ export default function OrdersPanel({
         </div>
       )}
 
-      {/* Deadline banner */}
-      {isDeadlineDay() && (
-        <div className="dash-deadline-banner">
-          <span style={{ fontSize: 18 }}>⚠️</span>
-          <span style={{ fontSize: 14, fontWeight: 600, color: '#2C1810' }}>
-            נעל את הבחירות שלך עד יום ראשון 20:00!
-          </span>
+      {/* No kids */}
+      {kids.length === 0 && (
+        <div style={{
+          background: 'rgba(255,255,255,0.18)', backdropFilter: 'blur(12px) saturate(180%)',
+          border: '1px solid rgba(255,255,255,0.35)', borderRadius: 16,
+          padding: 32, textAlign: 'center', color: 'rgba(44,24,16,0.45)', fontSize: 14,
+        }}>
+          אין ילדים רשומים
         </div>
       )}
 
-      {/* Week picker */}
-      <div
-        style={{
-          background: 'rgba(255,255,255,0.18)',
-          backdropFilter: 'blur(12px) saturate(180%)',
-          border: '1px solid rgba(255,255,255,0.35)',
-          boxShadow: '0 8px 32px rgba(31,38,135,0.12)',
-          borderRadius: 16,
-          padding: 12,
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <button
-            onClick={() => setWeekOffset((o) => Math.max(-4, o - 1))}
-            className="week-chip"
-            style={{ border: 'none', fontSize: 20, padding: '8px 12px' }}
-            aria-label="שבוע קודם"
-          >
-            →
-          </button>
-          <span style={{ fontSize: 14, fontWeight: 600, color: '#2C1810', textAlign: 'center', flex: 1 }}>
-            {formatWeekLabel(weekDates[0], weekDates[4])}
-          </span>
-          <button
-            onClick={() => setWeekOffset((o) => Math.min(4, o + 1))}
-            className="week-chip"
-            style={{ border: 'none', fontSize: 20, padding: '8px 12px' }}
-            aria-label="שבוע הבא"
-          >
-            ←
-          </button>
+      {/* No favorites warning */}
+      {kids.length > 0 && favMenuItems.length === 0 && (
+        <div style={{
+          background: 'rgba(255,179,71,0.12)', border: '1px solid rgba(255,179,71,0.35)',
+          borderRadius: 14, padding: '12px 16px',
+          fontSize: 13, color: 'rgba(44,24,16,0.65)', textAlign: 'center', fontWeight: 500,
+        }}>
+          עדיין אין מועדפים לילד זה — עבור ללשונית <strong>תפריט</strong> כדי להוסיף ❤️
         </div>
-      </div>
+      )}
 
-      {/* Day cards */}
-      {kids.length === 0 ? (
-        <div
-          style={{
-            background: 'rgba(255,255,255,0.18)',
-            backdropFilter: 'blur(12px) saturate(180%)',
-            border: '1px solid rgba(255,255,255,0.35)',
-            boxShadow: '0 8px 32px rgba(31,38,135,0.12)',
-            borderRadius: 16,
-            padding: 32, textAlign: 'center', color: 'rgba(44,24,16,0.45)', fontSize: 14,
-          }}
-        >
-          אין ילדים רשומים
-        </div>
-      ) : (
-        weekDateKeys.map((dateKey, i) => {
-          const dayPlan = dayPlans[dateKey] ?? { menuItemId: null, notes: '' }
-          const isOn = dayPlan.menuItemId !== null
-          const selectedItem = menuItems.find((m) => m.id === dayPlan.menuItemId)
-          const visibleItems = menuItems.slice(0, 4)
-          const hasMore = menuItems.length > 4
-          const isOpen = openMealSelector === dateKey
+      {/* ── 4-week grid ── */}
+      {kids.length > 0 && allWeeks.map((week) => {
+        const { offset, ws, dates, dateKeys } = week
+        const isReadOnly = offset === -1
+        const planned = countPlanned(week)
+        const expandedInWeek = expandedDay != null && dateKeys.includes(expandedDay)
 
-          return (
-            <div
-              key={dateKey}
-              className={isOn ? 'glass-card-interactive' : 'glass-card-off'}
-              style={{ padding: 16, cursor: isOn ? 'default' : 'pointer' }}
-              onClick={!isOn ? () => {
-                setDayPlans((prev) => ({ ...prev, [dateKey]: { ...prev[dateKey], menuItemId: null, notes: '' } }))
-                setOpenMealSelector(dateKey)
-              } : undefined}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: isOn ? 12 : 0 }}>
-                <span style={{ fontSize: 15, fontWeight: 700, color: '#2C1810' }}>
-                  {formatDayLabel(weekDates[i])}
+        return (
+          <div
+            key={offset}
+            style={{
+              background: 'rgba(255,255,255,0.18)',
+              backdropFilter: 'blur(12px) saturate(180%)',
+              border: offset === 0
+                ? '1.5px solid rgba(255,107,53,0.35)'
+                : '1px solid rgba(255,255,255,0.35)',
+              boxShadow: offset === 0
+                ? '0 8px 32px rgba(255,107,53,0.10)'
+                : '0 4px 16px rgba(31,38,135,0.08)',
+              borderRadius: 20,
+              overflow: 'hidden',
+            }}
+          >
+            {/* ── Week header ── */}
+            <div style={{
+              padding: '12px 14px',
+              background: offset === 0
+                ? 'linear-gradient(135deg, rgba(255,107,53,0.12), rgba(255,179,71,0.07))'
+                : isReadOnly
+                  ? 'rgba(44,24,16,0.04)'
+                  : 'rgba(255,255,255,0.08)',
+              borderBottom: '1px solid rgba(255,255,255,0.2)',
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+                <span style={{
+                  fontSize: 15, fontWeight: 800,
+                  color: offset === 0 ? '#FF6B35' : '#2C1810',
+                }}>
+                  {getWeekLabel(offset)}
                 </span>
-                <button
-                  onClick={(e) => { e.stopPropagation(); toggleDay(dateKey) }}
-                  style={{
-                    padding: '4px 12px', borderRadius: 20, border: 'none', fontSize: 13, fontWeight: 600,
-                    cursor: 'pointer',
-                    background: isOn ? 'rgba(255,107,53,0.15)' : 'rgba(44,24,16,0.08)',
-                    color: isOn ? '#FF6B35' : 'rgba(44,24,16,0.45)',
-                  }}
-                >
-                  {isOn ? 'מזמין' : 'דולג'}
-                </button>
+                <span style={{ fontSize: 12, color: 'rgba(44,24,16,0.45)', fontWeight: 500 }}>
+                  {formatWeekRange(ws)}
+                </span>
+              </div>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
+                {isReadOnly && (
+                  <span style={{
+                    fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 8,
+                    background: 'rgba(44,24,16,0.08)', color: 'rgba(44,24,16,0.4)',
+                  }}>
+                    צפייה בלבד
+                  </span>
+                )}
+                {!isReadOnly && planned > 0 && (
+                  <span style={{
+                    fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20,
+                    background: 'rgba(255,107,53,0.12)', color: '#FF6B35',
+                  }}>
+                    {planned} ארוחות
+                  </span>
+                )}
+                {!isReadOnly && (
+                  <button
+                    onClick={() => fillWeekFromPrev(week)}
+                    title="מלא כמו שבוע קודם"
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 4,
+                      padding: '4px 10px', borderRadius: 20,
+                      border: '1.5px dashed rgba(255,107,53,0.4)',
+                      background: 'rgba(255,107,53,0.06)',
+                      color: '#FF6B35', fontSize: 11, fontWeight: 700,
+                      cursor: 'pointer', whiteSpace: 'nowrap',
+                    }}
+                  >
+                    <span>📋</span>
+                    <span>מלא מהשבוע הקודם</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Fill error */}
+            {fillErrors[offset] && (
+              <div style={{
+                padding: '6px 14px',
+                background: 'rgba(239,71,111,0.07)',
+                borderBottom: '1px solid rgba(239,71,111,0.15)',
+                color: '#EF476F', fontSize: 11, textAlign: 'center', fontWeight: 500,
+              }}>
+                {fillErrors[offset]}
+              </div>
+            )}
+
+            {/* ── Day grid ── */}
+            <div style={{ padding: '12px 10px 0' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 5 }}>
+                {dates.map((d, i) => {
+                  const dateKey = dateKeys[i]
+                  const plan = dayPlans[dateKey] ?? { menuItemId: null, notes: '' }
+                  const isOn = plan.menuItemId != null
+                  const isFuture = dateKey > todayKey
+                  const isToday = dateKey === todayKey
+                  const canEdit = !isReadOnly && isFuture
+                  const isExpanded = expandedDay === dateKey
+                  const isActive = isExpanded || isOn
+                  const isSaving = savingDays.has(dateKey)
+                  const hasError = !!dayErrors[dateKey]
+                  const quotaFull = !isOn && mealsRemaining <= 0
+                  const clickable = canEdit && favMenuItems.length > 0 && !quotaFull && !isSaving
+
+                  return (
+                    <div
+                      key={dateKey}
+                      onClick={
+                        clickable
+                          ? () => setExpandedDay(isExpanded ? null : dateKey)
+                          : isOn && canEdit && !isSaving
+                            ? () => setExpandedDay(isExpanded ? null : dateKey)
+                            : undefined
+                      }
+                      style={{
+                        borderRadius: 12,
+                        padding: '7px 3px 9px',
+                        textAlign: 'center',
+                        cursor: (clickable || (isOn && canEdit && !isSaving)) ? 'pointer' : 'default',
+                        background: isExpanded
+                          ? 'rgba(255,107,53,0.15)'
+                          : isOn
+                            ? 'rgba(255,107,53,0.08)'
+                            : isToday
+                              ? 'rgba(255,209,71,0.15)'
+                              : 'rgba(255,255,255,0.38)',
+                        border: hasError
+                          ? '2px solid #EF476F'
+                          : isExpanded
+                            ? '2px solid #FF6B35'
+                            : isOn
+                              ? '1.5px solid rgba(255,107,53,0.3)'
+                              : isToday
+                                ? '1.5px solid rgba(255,209,71,0.5)'
+                                : '1px solid rgba(255,255,255,0.5)',
+                        opacity: isSaving
+                          ? 0.55
+                          : !isFuture && !isToday && !isOn && !isReadOnly ? 0.4 : 1,
+                        transition: 'all 150ms ease-out',
+                        minHeight: 74,
+                        display: 'flex', flexDirection: 'column',
+                        alignItems: 'center', justifyContent: 'space-between',
+                        boxSizing: 'border-box',
+                        position: 'relative',
+                      }}
+                    >
+                      {/* Saving spinner overlay */}
+                      {isSaving && (
+                        <div style={{
+                          position: 'absolute', inset: 0, display: 'flex',
+                          alignItems: 'center', justifyContent: 'center',
+                          borderRadius: 12, zIndex: 1,
+                        }}>
+                          <span style={{ fontSize: 14, animation: 'spin 1s linear infinite' }}>⏳</span>
+                        </div>
+                      )}
+
+                      {/* Day name */}
+                      <div style={{
+                        fontSize: 10, fontWeight: 700,
+                        color: isActive ? '#FF6B35' : 'rgba(44,24,16,0.4)',
+                      }}>
+                        {SHORT_DAY[i]}
+                      </div>
+
+                      {/* Date */}
+                      <div style={{
+                        fontSize: 12, fontWeight: 600,
+                        color: isOn ? '#2C1810' : 'rgba(44,24,16,0.6)',
+                        marginTop: 2,
+                      }}>
+                        {d.getDate()}.{d.getMonth() + 1}
+                      </div>
+
+                      {/* Status icon */}
+                      <div style={{ marginTop: 4, lineHeight: 1 }}>
+                        {isOn ? (
+                          <span style={{ fontSize: 18 }}>🍱</span>
+                        ) : canEdit && favMenuItems.length > 0 && !quotaFull ? (
+                          <span style={{
+                            fontSize: 15, fontWeight: 700,
+                            color: isExpanded ? '#FF6B35' : 'rgba(255,107,53,0.5)',
+                          }}>＋</span>
+                        ) : canEdit && quotaFull ? (
+                          <span style={{ fontSize: 13 }} title="המנוי מלא">🔒</span>
+                        ) : (
+                          <span style={{ fontSize: 12, color: 'rgba(44,24,16,0.2)' }}>—</span>
+                        )}
+                      </div>
+
+                      {/* Today badge */}
+                      {isToday && (
+                        <div style={{
+                          fontSize: 8, fontWeight: 800, padding: '1px 4px',
+                          borderRadius: 4, background: 'rgba(255,209,71,0.6)',
+                          color: '#2C1810', marginTop: 2, letterSpacing: 0.3,
+                        }}>
+                          היום
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
 
-              {isOn && (
-                <div onClick={(e) => e.stopPropagation()}>
-                  <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
-                    {visibleItems.map((item) => (
+              {/* Day error messages */}
+              {dateKeys.some((k) => dayErrors[k]) && (
+                <div style={{ marginTop: 6 }}>
+                  {dateKeys.map((k) => dayErrors[k] ? (
+                    <div key={k} style={{
+                      fontSize: 11, color: '#EF476F', textAlign: 'center',
+                      padding: '2px 0', fontWeight: 500,
+                    }}>
+                      {dayErrors[k]}
+                    </div>
+                  ) : null)}
+                </div>
+              )}
+
+              {/* ── Expanded meal picker panel ── */}
+              {expandedInWeek && expandedDay && (() => {
+                const plan = dayPlans[expandedDay] ?? { menuItemId: null, notes: '' }
+                const isFuture = expandedDay > todayKey
+                const canEdit = !isReadOnly && isFuture
+                if (!canEdit) return null
+                return (
+                  <div style={{
+                    marginTop: 10,
+                    background: 'rgba(255,255,255,0.5)',
+                    backdropFilter: 'blur(8px)',
+                    borderRadius: 16,
+                    padding: '12px 12px 14px',
+                    border: '1.5px solid rgba(255,107,53,0.2)',
+                  }}>
+                    {/* Picker header */}
+                    <div style={{
+                      display: 'flex', justifyContent: 'space-between',
+                      alignItems: 'center', marginBottom: 10,
+                    }}>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: '#2C1810' }}>
+                        {formatExpandedLabel(expandedDay)}
+                      </span>
                       <button
-                        key={item.id}
-                        onClick={() => selectMeal(dateKey, item.id)}
-                        className={`meal-icon-btn${dayPlan.menuItemId === item.id ? ' meal-icon-btn-active' : ''}`}
-                        style={{ border: 'none' }}
-                        title={item.name_he}
+                        onClick={() => setExpandedDay(null)}
+                        style={{
+                          background: 'rgba(44,24,16,0.08)', border: 'none',
+                          borderRadius: 20, padding: '3px 10px',
+                          fontSize: 12, cursor: 'pointer', color: 'rgba(44,24,16,0.5)',
+                        }}
                       >
-                        <span style={{ fontSize: 22 }}>🍱</span>
-                        <span style={{ fontSize: 10, fontWeight: 600, color: '#2C1810', maxWidth: 48, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1 }}>
-                          {item.name_he.split(' ')[0]}
-                        </span>
+                        סגור
                       </button>
-                    ))}
-                    {hasMore && (
+                    </div>
+
+                    {/* Quota full warning */}
+                    {!plan.menuItemId && mealsRemaining <= 0 && (
+                      <div style={{
+                        marginBottom: 10, padding: '7px 12px', borderRadius: 10,
+                        background: 'rgba(239,71,111,0.08)', border: '1px solid rgba(239,71,111,0.2)',
+                        fontSize: 12, color: '#EF476F', fontWeight: 600, textAlign: 'center',
+                      }}>
+                        כל ארוחות המנוי מנוצלות — בטל ארוחה אחרת כדי לפנות מקום
+                      </div>
+                    )}
+
+                    {/* Meal pills */}
+                    <div style={{
+                      display: 'flex', gap: 8, overflowX: 'auto',
+                      paddingBottom: 6, marginBottom: 10,
+                    }}>
+                      {favMenuItems.map((item) => {
+                        const active = plan.menuItemId === item.id
+                        const disabled = !plan.menuItemId && mealsRemaining <= 0
+                        return (
+                          <button
+                            key={item.id}
+                            onClick={disabled ? undefined : () => selectMeal(expandedDay, item.id)}
+                            style={{
+                              flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6,
+                              padding: '8px 14px', borderRadius: 20,
+                              border: active ? '2px solid #FF6B35' : '1.5px solid rgba(44,24,16,0.15)',
+                              background: active ? 'rgba(255,107,53,0.12)' : 'rgba(255,255,255,0.7)',
+                              cursor: disabled ? 'not-allowed' : 'pointer', fontSize: 13,
+                              fontWeight: active ? 700 : 500,
+                              color: active ? '#FF6B35' : disabled ? 'rgba(44,24,16,0.3)' : '#2C1810',
+                              opacity: disabled ? 0.5 : 1,
+                              whiteSpace: 'nowrap',
+                              transition: 'all 150ms ease-out',
+                            }}
+                          >
+                            <span style={{ fontSize: 15 }}>🍱</span>
+                            {item.name_he}
+                          </button>
+                        )
+                      })}
+                    </div>
+
+                    {/* Notes */}
+                    <textarea
+                      rows={2}
+                      value={plan.notes}
+                      onChange={(e) => updateNotes(expandedDay, e.target.value)}
+                      placeholder="הערה למטבח..."
+                      className="input-field"
+                      style={{ resize: 'none', fontSize: 13, marginBottom: plan.menuItemId ? 10 : 0 }}
+                    />
+
+                    {/* Cancel meal */}
+                    {plan.menuItemId && (
                       <button
-                        onClick={() => setOpenMealSelector(isOpen ? null : dateKey)}
-                        className="meal-icon-btn"
-                        style={{ border: 'none' }}
+                        onClick={() => cancelDay(expandedDay)}
+                        style={{
+                          padding: '6px 14px', borderRadius: 20, border: 'none',
+                          background: 'rgba(239,71,111,0.1)', color: '#EF476F',
+                          fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                        }}
                       >
-                        <span style={{ fontSize: 12, fontWeight: 600, color: 'rgba(44,24,16,0.55)' }}>עוד...</span>
+                        ביטול ארוחה
                       </button>
                     )}
                   </div>
-
-                  {isOpen && (
-                    <div style={{
-                      background: 'rgba(255,255,255,0.90)', borderRadius: 12,
-                      border: '1px solid rgba(44,24,16,0.08)', maxHeight: 200, overflowY: 'auto', marginBottom: 10,
-                    }}>
-                      {menuItems.length === 0 ? (
-                        <div style={{ padding: '12px 16px', fontSize: 13, color: 'rgba(44,24,16,0.45)' }}>
-                          אין ארוחות זמינות
-                        </div>
-                      ) : (
-                        menuItems.map((item, idx) => (
-                          <button
-                            key={item.id}
-                            onClick={() => selectMeal(dateKey, item.id)}
-                            style={{
-                              width: '100%', textAlign: 'right', padding: '10px 16px',
-                              background: 'none', border: 'none',
-                              borderBottom: idx < menuItems.length - 1 ? '1px solid rgba(44,24,16,0.06)' : 'none',
-                              cursor: 'pointer', fontSize: 14, fontWeight: 600, color: '#2C1810',
-                              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                            }}
-                          >
-                            <span>{item.name_he}</span>
-                            {dayPlan.menuItemId === item.id && <span style={{ color: '#FF6B35' }}>✓</span>}
-                          </button>
-                        ))
-                      )}
-                    </div>
-                  )}
-
-                  {selectedItem && !isOpen && (
-                    <div style={{ fontSize: 13, color: '#FF6B35', fontWeight: 600, marginBottom: 10 }}>
-                      {selectedItem.name_he}
-                    </div>
-                  )}
-
-                  <textarea
-                    rows={2}
-                    value={dayPlan.notes}
-                    onChange={(e) => updateNotes(dateKey, e.target.value)}
-                    placeholder="הערה למטבח..."
-                    className="input-field"
-                    style={{ resize: 'none', fontSize: 14 }}
-                  />
-                </div>
-              )}
-
-              {!isOn && (
-                <div style={{ fontSize: 13, color: 'rgba(44,24,16,0.35)', marginTop: 4 }}>
-                  לחץ להוספת ארוחה
-                </div>
-              )}
+                )
+              })()}
             </div>
-          )
-        })
-      )}
 
-      {/* Save bar */}
-      <div className="save-week-bar">
-        <button
-          onClick={handleSave}
-          disabled={!dirty || isPending || !subscription}
-          style={{
-            width: '100%', height: 52, borderRadius: 14, border: 'none',
-            fontSize: 16, fontWeight: 700,
-            cursor: dirty && !isPending && subscription ? 'pointer' : 'default',
-            color: dirty && subscription ? 'white' : 'rgba(44,24,16,0.35)',
-            background: dirty && subscription ? '#FF6B35' : 'rgba(44,24,16,0.08)',
-            transition: 'background 200ms ease-out',
-          }}
-        >
-          {isPending ? 'שומר...' : `שמור ${plannedCount} ארוחות לשבוע זה`}
-        </button>
-        {!subscription && (
-          <div style={{ color: 'rgba(44,24,16,0.45)', fontSize: 12, textAlign: 'center', marginTop: 6 }}>
-            נדרש מנוי פעיל לשמירת ארוחות
+            {/* No subscription warning (replaces save button area) */}
+            {!isReadOnly && !subscription && (
+              <div style={{ padding: '10px 10px 12px' }}>
+                <div style={{ color: 'rgba(44,24,16,0.4)', fontSize: 11, textAlign: 'center' }}>
+                  נדרש מנוי פעיל לשמירת ארוחות
+                </div>
+              </div>
+            )}
           </div>
-        )}
-        {saveError && (
-          <div style={{ color: '#EF476F', fontSize: 12, textAlign: 'center', marginTop: 8 }}>
-            {saveError}
-          </div>
-        )}
-      </div>
+        )
+      })}
     </div>
   )
 }
