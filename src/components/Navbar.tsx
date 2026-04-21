@@ -149,7 +149,7 @@ export default function Navbar() {
           {user !== null && user !== undefined && (
             <div className="flex items-center gap-2">
               <Link
-                href="/user"
+                href="/app"
                 className="navbar-user-link group"
                 aria-label={`פרופיל של ${displayName}`}
               >

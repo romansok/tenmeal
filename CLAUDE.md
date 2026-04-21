@@ -29,7 +29,7 @@ src/
 ├── app/
 │   ├── (app)/          # Protected route group (requires auth)
 │   │   ├── onboard/    # Onboarding (OnboardForm.tsx + Server Actions in actions.ts)
-│   │   └── user/       # User dashboard — panel-based tabs:
+│   │   └── app/        # User dashboard — panel-based tabs:
 │   │                   #   ProfileView, AccountPanel, MenuPanel,
 │   │                   #   OrdersPanel, SubscriptionPanel
 │   ├── api/contact/    # Contact form API route (Resend email)
@@ -46,9 +46,9 @@ src/
 **Supabase client rule:** never import `client.ts` from server code or `server.ts` from client code. Server Actions and Route Handlers must use `server.ts` so session cookies propagate.
 
 **Routing & Auth Flow:**
-1. `middleware.ts` refreshes Supabase sessions on every request and guards `/user/*` and `/onboard/*`. Unauthenticated visitors to those paths get redirected to `/login`; authenticated visitors to `/login` get redirected to `/user`.
+1. `middleware.ts` refreshes Supabase sessions on every request and guards `/app/*` and `/onboard/*`. Unauthenticated visitors to those paths get redirected to `/login`; authenticated visitors to `/login` get redirected to `/app`.
 2. Google OAuth: `/login` calls `supabase.auth.signInWithOAuth({ provider: 'google' })`.
-3. `/auth/callback` ([src/app/auth/callback/route.ts](src/app/auth/callback/route.ts)) exchanges the code for a session, then looks up `auth_identities → profiles`. If the identity row is missing OR `profiles.onboarding_done` is false, it redirects to `/onboard`; otherwise to `/user` (or `?next=` if provided and safe).
+3. `/auth/callback` ([src/app/auth/callback/route.ts](src/app/auth/callback/route.ts)) exchanges the code for a session, then looks up `auth_identities → profiles`. If the identity row is missing OR `profiles.onboarding_done` is false, it redirects to `/onboard`; otherwise to `/app` (or `?next=` if provided and safe).
 
 **Static Export:** The app is intended for GitHub Pages. [next.config.js](next.config.js) is **missing `output: 'export'`** — add it (and handle the Route Handlers / middleware accordingly) before deploying, since static export disallows server-only features.
 

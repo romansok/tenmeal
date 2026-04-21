@@ -100,6 +100,124 @@
     box-shadow: 0 8px 40px rgba(44, 24, 16, 0.10), 0 2px 8px rgba(255, 107, 53, 0.08);
   }
 
+  /*
+   * Hero "Go to app" CTA — glass pill with animated gradient border.
+   * Gradient border is achieved via a double-background technique:
+   *   - outer background = amber→orange gradient (padding-box is clipped so it shows only as border)
+   *   - inner background = soft warm glass (content-box clip)
+   * A subtle shimmer sweeps across the gradient to draw the eye without
+   * competing with the primary CTA.
+   */
+  .btn-app-cta {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 24px;
+    border-radius: 999px;
+    font-weight: 700;
+    font-size: 15px;
+    color: var(--deep-espresso);
+    text-decoration: none;
+    isolation: isolate;
+
+    /* Glass inner + animated gradient border */
+    background:
+      linear-gradient(rgba(255, 248, 240, 0.78), rgba(255, 248, 240, 0.78)) padding-box,
+      linear-gradient(
+        115deg,
+        #FFB347 0%,
+        #FF6B35 35%,
+        #FFB347 65%,
+        #FF6B35 100%
+      ) border-box;
+    background-size: 100% 100%, 300% 100%;
+    background-position: 0 0, 0% 0;
+    border: 2px solid transparent;
+    backdrop-filter: blur(10px) saturate(180%);
+    -webkit-backdrop-filter: blur(10px) saturate(180%);
+
+    box-shadow:
+      0 4px 20px rgba(255, 107, 53, 0.20),
+      0 1px 3px rgba(44, 24, 16, 0.08),
+      inset 0 1px 0 rgba(255, 255, 255, 0.60);
+
+    animation: app-cta-gradient 4s linear infinite;
+    transition: transform 200ms ease-out, box-shadow 200ms ease-out;
+  }
+
+  .btn-app-cta::before {
+    /* Diagonal sheen that sweeps across once every cycle */
+    content: '';
+    position: absolute;
+    inset: 2px;
+    border-radius: inherit;
+    background: linear-gradient(
+      110deg,
+      transparent 30%,
+      rgba(255, 255, 255, 0.55) 50%,
+      transparent 70%
+    );
+    background-size: 220% 100%;
+    background-repeat: no-repeat;
+    animation: app-cta-sheen 4s ease-in-out infinite;
+    pointer-events: none;
+    z-index: -1;
+    mix-blend-mode: overlay;
+  }
+
+  .btn-app-cta:hover {
+    transform: translateY(-2px);
+    box-shadow:
+      0 8px 28px rgba(255, 107, 53, 0.32),
+      0 2px 6px rgba(44, 24, 16, 0.10),
+      inset 0 1px 0 rgba(255, 255, 255, 0.75);
+  }
+
+  .btn-app-cta:active {
+    transform: translateY(0);
+  }
+
+  .btn-app-cta-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 999px;
+    background: linear-gradient(135deg, #FF6B35 0%, #FFB347 100%);
+    color: #ffffff;
+    font-size: 13px;
+    box-shadow: 0 2px 6px rgba(255, 107, 53, 0.35);
+  }
+
+  .btn-app-cta-arrow {
+    font-size: 16px;
+    color: var(--sunrise-orange);
+    transition: transform 200ms ease-out;
+  }
+
+  .btn-app-cta:hover .btn-app-cta-arrow {
+    transform: translateX(-4px); /* RTL: arrow points left, so move left on hover */
+  }
+
+  @keyframes app-cta-gradient {
+    0%   { background-position: 0 0, 0% 0; }
+    100% { background-position: 0 0, 300% 0; }
+  }
+
+  @keyframes app-cta-sheen {
+    0%, 15%   { background-position: 120% 0; }
+    55%, 100% { background-position: -120% 0; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .btn-app-cta,
+    .btn-app-cta::before {
+      animation: none;
+    }
+  }
+
   .glass-contact {
     background: rgba(255, 248, 240, 0.72);
     backdrop-filter: blur(12px) saturate(160%);
@@ -506,6 +624,72 @@
 
   /* Save week sticky button */
   .save-week-bar { position:fixed; bottom:0; left:0; right:0; padding:16px; background:rgba(255,248,240,0.92); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); border-top:1px solid rgba(255,179,71,0.2); z-index:50; }
+
+  /* ─── Orders panel utilities ───────────────────────────── */
+
+  /* Spinner keyframes — referenced inline for saving state */
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Fade-edge utility for horizontal-scroll rails (kid pills, favorite pills).
+     Softens overflow edges so users notice more items exist offscreen. */
+  .scroll-fade-edge {
+    -webkit-mask-image: linear-gradient(to left, transparent 0, #000 24px, #000 calc(100% - 24px), transparent 100%);
+            mask-image: linear-gradient(to left, transparent 0, #000 24px, #000 calc(100% - 24px), transparent 100%);
+  }
+
+  /* Day grid — responsive 6-col desktop / 3-col mobile */
+  .day-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 5px; }
+  @media (max-width: 480px) { .day-grid { grid-template-columns: repeat(3, 1fr); row-gap: 6px; } }
+
+  /* Toast host — fixed bottom-center pill stack */
+  .toast-host {
+    position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+    z-index: 1100; display: flex; flex-direction: column; gap: 8px;
+    pointer-events: none; width: min(420px, calc(100vw - 32px));
+  }
+  .toast-pill {
+    pointer-events: auto;
+    background: rgba(44, 24, 16, 0.92);
+    backdrop-filter: blur(10px) saturate(180%);
+    -webkit-backdrop-filter: blur(10px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 14px; padding: 10px 14px;
+    display: flex; align-items: center; gap: 12px;
+    color: #FFF8F0; font-size: 14px; font-weight: 500;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+    animation: toast-in 180ms ease-out;
+  }
+  .toast-pill-message { flex: 1; min-width: 0; }
+  .toast-pill-action {
+    background: transparent; border: none;
+    color: #FFB347; font-weight: 700; font-size: 14px;
+    padding: 4px 8px; border-radius: 8px; cursor: pointer;
+    transition: background 120ms ease-out;
+  }
+  .toast-pill-action:hover { background: rgba(255, 179, 71, 0.12); }
+  @keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+  /* Bottom-sheet modal (used by day meal-picker) */
+  .sheet-backdrop {
+    position: fixed; inset: 0; z-index: 900;
+    background: rgba(44, 24, 16, 0.45);
+    backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+    animation: sheet-fade-in 180ms ease-out;
+  }
+  .sheet-panel {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 910;
+    background: rgba(255, 248, 240, 0.96);
+    backdrop-filter: blur(16px) saturate(180%);
+    -webkit-backdrop-filter: blur(16px) saturate(180%);
+    border-top: 1px solid rgba(255, 255, 255, 0.55);
+    border-radius: 20px 20px 0 0;
+    box-shadow: 0 -12px 40px rgba(44, 24, 16, 0.22);
+    max-height: 72vh; overflow-y: auto;
+    padding: 14px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+    animation: sheet-slide-up 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  @keyframes sheet-fade-in { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes sheet-slide-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
 
   .btn-subscription-cta {
     display: inline-flex; align-items: center; justify-content: center;

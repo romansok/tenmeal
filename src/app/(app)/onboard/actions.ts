@@ -131,5 +131,5 @@ export async function completeOnboarding(
     }
   }
 
-  redirect('/user')
+  redirect('/app')
 }

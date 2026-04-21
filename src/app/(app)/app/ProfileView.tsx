@@ -5,6 +5,7 @@ import OrdersPanel from './OrdersPanel'
 import SubscriptionPanel from './SubscriptionPanel'
 import AccountPanel from './AccountPanel'
 import MenuPanel from './MenuPanel'
+import { ToastProvider } from '@/components/Toast'
 import type { Profile, Kid, Subscription, MenuItem, ExistingOrder, SubscriptionPlan, SubscriptionHistoryItem, DietaryTag, MenuItemWithTags, KidFavorite } from './types'
 
 interface ProfileViewProps {
@@ -79,6 +80,7 @@ export default function ProfileView({
   const tabs: Tab[] = ['orders', 'subscription', 'account', 'menu']
 
   return (
+    <ToastProvider>
     <div dir="rtl">
       {/* Mobile tab bar */}
       <div className="user-tab-bar">
@@ -204,5 +206,6 @@ export default function ProfileView({
         </div>
       </div>
     </div>
+    </ToastProvider>
   )
 }

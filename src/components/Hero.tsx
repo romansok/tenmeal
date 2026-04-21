@@ -9,6 +9,18 @@ export default function Hero() {
       <div className="pointer-events-none absolute w-56 h-56 rounded-full blur-3xl top-16 left-10" style={{ backgroundColor: 'rgba(91, 173, 111, 0.18)' }} />
 
       <div className="relative max-w-xl w-full mx-auto py-24 flex flex-col items-center">
+        {/* Prominent "Go to app" CTA — glass pill with animated gradient border */}
+        <a href="/app" className="btn-app-cta mb-6" aria-label="כניסה לאזור האישי">
+          <span className="btn-app-cta-icon" aria-hidden>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+              <circle cx="12" cy="7" r="4" />
+            </svg>
+          </span>
+          <span>כניסה לאזור האישי</span>
+          <span className="btn-app-cta-arrow" aria-hidden>←</span>
+        </a>
+
         {/* Glass card */}
         <div className="glass-hero w-full p-10 md:p-14 text-center animate-slide-up">
           <span className="inline-block bg-fresh-veggie-green/15 text-deep-espresso/75 text-sm font-semibold px-4 py-1.5 rounded-full mb-8 tracking-wide">
