@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { Rubik } from 'next/font/google'
 import '@/styles/globals.css'
+import VersionBadge from '@/components/VersionBadge'
 
 const rubik = Rubik({
   subsets: ['latin', 'hebrew'],
@@ -20,7 +21,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="he" dir="rtl" className={rubik.variable}>
-      <body className="font-rubik">{children}</body>
+      <body className="font-rubik">
+        {children}
+        <VersionBadge />
+      </body>
     </html>
   )
 }
