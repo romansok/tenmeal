@@ -1,8 +1,9 @@
 'use client'
 
-import { useState, useTransition, useEffect } from 'react'
+import { useEffect, useState, useTransition } from 'react'
 import { purchaseSubscription, toggleAutoRenew } from './actions'
-import type { Subscription, SubscriptionPlan, SubscriptionHistoryItem } from './types'
+import GlassCard from './ui/GlassCard'
+import type { Subscription, SubscriptionHistoryItem, SubscriptionPlan } from './types'
 
 interface SubscriptionPanelProps {
   subscription: Subscription | null
@@ -14,6 +15,15 @@ interface SubscriptionPanelProps {
   onHistoryChange: (newSub: SubscriptionHistoryItem) => void
 }
 
+type SubModal = 'none' | 'renew' | 'upgrade'
+
+const rowStyle: React.CSSProperties = {
+  background: 'rgba(255,255,255,0.10)',
+  border: '1px solid rgba(255,255,255,0.25)',
+  borderRadius: 12,
+  padding: '10px 14px',
+}
+
 export default function SubscriptionPanel({
   subscription,
   mealsRemaining,
@@ -23,19 +33,19 @@ export default function SubscriptionPanel({
   subscriptionHistory,
   onHistoryChange,
 }: SubscriptionPanelProps) {
-  const [showRenewConfirm, setShowRenewConfirm] = useState(false)
-  const [showUpgradePicker, setShowUpgradePicker] = useState(!subscription)
+  const [modal, setModal] = useState<SubModal>(subscription ? 'none' : 'upgrade')
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null)
   const [isPurchasePending, startPurchaseTransition] = useTransition()
   const [purchaseError, setPurchaseError] = useState<string | null>(null)
   const [autoRenew, setAutoRenew] = useState(subscription?.auto_renew ?? false)
   const [isTogglePending, startToggleTransition] = useTransition()
 
-  // Sync autoRenew and picker state when subscription prop changes (e.g. after purchase)
+  // Re-sync local toggle + close picker when the active subscription changes
+  // (e.g. after a successful purchase).
   useEffect(() => {
     setAutoRenew(subscription?.auto_renew ?? false)
-    if (subscription) setShowUpgradePicker(false)
-  }, [subscription?.id])
+    if (subscription) setModal('none')
+  }, [subscription?.id, subscription?.auto_renew])
 
   const plan = subscription?.subscription_plans ?? null
   const progressPct = Math.min(100, Math.round((mealsRemaining / (mealsTotal || 1)) * 100))
@@ -46,22 +56,21 @@ export default function SubscriptionPanel({
       const result = await purchaseSubscription(planId)
       if ('error' in result) {
         setPurchaseError(result.error)
-      } else {
-        const newSub = result.subscription as any
-        onSubscriptionChange(newSub, newSub.meals_remaining)
-        onHistoryChange({
-          id: newSub.id,
-          meals_remaining: newSub.meals_remaining,
-          starts_at: newSub.starts_at,
-          expires_at: newSub.expires_at,
-          status: 'active',
-          auto_renew: newSub.auto_renew ?? false,
-          subscription_plans: newSub.subscription_plans,
-        })
-        setShowRenewConfirm(false)
-        setShowUpgradePicker(false)
-        setSelectedPlanId(null)
+        return
       }
+      const newSub = result.subscription
+      onSubscriptionChange(newSub, newSub.meals_remaining)
+      onHistoryChange({
+        id: newSub.id,
+        meals_remaining: newSub.meals_remaining,
+        starts_at: newSub.starts_at,
+        expires_at: newSub.expires_at,
+        status: 'active',
+        auto_renew: newSub.auto_renew,
+        subscription_plans: newSub.subscription_plans,
+      })
+      setModal('none')
+      setSelectedPlanId(null)
     })
   }
 
@@ -71,32 +80,14 @@ export default function SubscriptionPanel({
     setAutoRenew(next) // optimistic
     startToggleTransition(async () => {
       const result = await toggleAutoRenew(subscription.id, next)
-      if ('error' in result) {
-        setAutoRenew(!next) // revert
-      }
+      if ('error' in result) setAutoRenew(!next) // revert
     })
-  }
-
-  const cardStyle: React.CSSProperties = {
-    background: 'rgba(255,255,255,0.18)',
-    backdropFilter: 'blur(12px) saturate(180%)',
-    border: '1px solid rgba(255,255,255,0.35)',
-    boxShadow: '0 8px 32px rgba(31,38,135,0.12)',
-    borderRadius: 20,
-    padding: 24,
-  }
-
-  const rowStyle: React.CSSProperties = {
-    background: 'rgba(255,255,255,0.10)',
-    border: '1px solid rgba(255,255,255,0.25)',
-    borderRadius: 12,
-    padding: '10px 14px',
   }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {/* Section 1 — Current Plan Card */}
-      <div style={cardStyle}>
+      {/* Current plan */}
+      <GlassCard padding={24}>
         <div style={{ fontSize: 15, fontWeight: 700, color: '#2C1810', marginBottom: 16 }}>
           מנוי נוכחי
         </div>
@@ -123,7 +114,6 @@ export default function SubscriptionPanel({
               </div>
             )}
 
-            {/* Auto-renew toggle */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
               <span style={{ fontSize: 13, color: 'rgba(44,24,16,0.7)', fontWeight: 600 }}>חידוש אוטומטי</span>
               <label style={{ position: 'relative', display: 'inline-block', width: 44, height: 24, cursor: 'pointer' }}>
@@ -148,25 +138,24 @@ export default function SubscriptionPanel({
               </label>
             </div>
 
-            {/* Two action buttons */}
             <div style={{ display: 'flex', gap: 8 }}>
               <button
-                onClick={() => { setShowRenewConfirm(true); setShowUpgradePicker(false) }}
+                onClick={() => setModal('renew')}
                 style={{
                   flex: 1, padding: '8px 12px', borderRadius: 10,
                   border: '1.5px solid rgba(255,107,53,0.35)',
-                  background: showRenewConfirm ? 'rgba(255,107,53,0.15)' : 'rgba(255,107,53,0.08)',
+                  background: modal === 'renew' ? 'rgba(255,107,53,0.15)' : 'rgba(255,107,53,0.08)',
                   color: '#FF6B35', fontSize: 14, fontWeight: 600, cursor: 'pointer',
                 }}
               >
                 חדש מנוי
               </button>
               <button
-                onClick={() => { setShowUpgradePicker(true); setShowRenewConfirm(false) }}
+                onClick={() => setModal('upgrade')}
                 style={{
                   flex: 1, padding: '8px 12px', borderRadius: 10,
                   border: '1.5px solid rgba(255,107,53,0.35)',
-                  background: showUpgradePicker ? 'rgba(255,107,53,0.15)' : 'rgba(255,107,53,0.08)',
+                  background: modal === 'upgrade' ? 'rgba(255,107,53,0.15)' : 'rgba(255,107,53,0.08)',
                   color: '#FF6B35', fontSize: 14, fontWeight: 600, cursor: 'pointer',
                 }}
               >
@@ -176,11 +165,14 @@ export default function SubscriptionPanel({
           </>
         ) : (
           <div>
-            <div style={{ fontSize: 13, color: 'rgba(44,24,16,0.5)', marginBottom: 12, padding: '10px 14px', background: 'rgba(44,24,16,0.05)', borderRadius: 12 }}>
+            <div style={{
+              fontSize: 13, color: 'rgba(44,24,16,0.5)', marginBottom: 12,
+              padding: '10px 14px', background: 'rgba(44,24,16,0.05)', borderRadius: 12,
+            }}>
               אין מנוי פעיל
             </div>
             <button
-              onClick={() => setShowUpgradePicker(true)}
+              onClick={() => setModal('upgrade')}
               className="btn-subscription-cta"
               style={{ border: 'none' }}
             >
@@ -188,11 +180,11 @@ export default function SubscriptionPanel({
             </button>
           </div>
         )}
-      </div>
+      </GlassCard>
 
-      {/* Section 2 — Renewal Confirmation Card */}
-      {showRenewConfirm && subscription && plan && (
-        <div style={cardStyle}>
+      {/* Renewal confirmation */}
+      {modal === 'renew' && subscription && plan && (
+        <GlassCard padding={24}>
           <div style={{ fontSize: 15, fontWeight: 700, color: '#2C1810', marginBottom: 16 }}>
             חידוש מנוי
           </div>
@@ -215,8 +207,11 @@ export default function SubscriptionPanel({
             {isPurchasePending ? 'מעבד...' : 'אשר חידוש'}
           </button>
           <button
-            onClick={() => { setShowRenewConfirm(false); setPurchaseError(null) }}
-            style={{ width: '100%', background: 'none', border: 'none', fontSize: 13, color: 'rgba(44,24,16,0.4)', cursor: 'pointer', textAlign: 'center' }}
+            onClick={() => { setModal('none'); setPurchaseError(null) }}
+            style={{
+              width: '100%', background: 'none', border: 'none',
+              fontSize: 13, color: 'rgba(44,24,16,0.4)', cursor: 'pointer', textAlign: 'center',
+            }}
           >
             ביטול
           </button>
@@ -225,12 +220,12 @@ export default function SubscriptionPanel({
               {purchaseError}
             </div>
           )}
-        </div>
+        </GlassCard>
       )}
 
-      {/* Section 3 — Upgrade Plan Picker */}
-      {showUpgradePicker && (
-        <div style={cardStyle}>
+      {/* Upgrade picker */}
+      {modal === 'upgrade' && (
+        <GlassCard padding={24}>
           <div style={{ fontSize: 15, fontWeight: 700, color: '#2C1810', marginBottom: 16 }}>
             בחר חבילה
           </div>
@@ -279,18 +274,21 @@ export default function SubscriptionPanel({
 
           {subscription && (
             <button
-              onClick={() => { setShowUpgradePicker(false); setSelectedPlanId(null); setPurchaseError(null) }}
-              style={{ width: '100%', background: 'none', border: 'none', marginTop: 10, fontSize: 13, color: 'rgba(44,24,16,0.4)', cursor: 'pointer', textAlign: 'center' }}
+              onClick={() => { setModal('none'); setSelectedPlanId(null); setPurchaseError(null) }}
+              style={{
+                width: '100%', background: 'none', border: 'none', marginTop: 10,
+                fontSize: 13, color: 'rgba(44,24,16,0.4)', cursor: 'pointer', textAlign: 'center',
+              }}
             >
               ביטול
             </button>
           )}
-        </div>
+        </GlassCard>
       )}
 
-      {/* Section 4 — Purchase History (hidden when empty) */}
+      {/* Purchase history */}
       {subscriptionHistory.length > 0 && (
-        <div style={cardStyle}>
+        <GlassCard padding={24}>
           <div style={{ fontSize: 15, fontWeight: 700, color: '#2C1810', marginBottom: 16 }}>
             היסטוריית רכישות
           </div>
@@ -318,9 +316,8 @@ export default function SubscriptionPanel({
               </div>
             ))}
           </div>
-        </div>
+        </GlassCard>
       )}
     </div>
   )
 }
-

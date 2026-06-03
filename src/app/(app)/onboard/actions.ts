@@ -9,8 +9,7 @@ interface KidInput {
   last_name: string
   class_name: string
   phone: string
-  school_name: string
-  school_address: string
+  school_id: string
   emoji_avatar: string
   tag_ids: string[]
 }
@@ -25,7 +24,6 @@ export async function completeOnboarding(
 ): Promise<{ error: string } | never> {
   const supabase = createClient()
 
-  // 1. Get current user
   const {
     data: { user },
     error: userError,
@@ -35,7 +33,6 @@ export async function completeOnboarding(
     return { error: 'לא מחובר. נסה להתחבר מחדש.' }
   }
 
-  // 2. Look up auth_identities
   const { data: identityRow, error: identityError } = await supabase
     .from('auth_identities')
     .select('id')
@@ -44,11 +41,9 @@ export async function completeOnboarding(
     .single()
 
   if (identityError || !identityRow) {
-    console.error('[onboard] auth_identities lookup failed:', identityError, 'user.id:', user.id)
     return { error: `שגיאה בזיהוי המשתמש: ${identityError?.message ?? 'שורה לא נמצאה'}` }
   }
 
-  // 3. Look up or create profile (handles re-login after partial account deletion)
   let profileId: string
 
   const { data: existingProfile } = await supabase
@@ -72,38 +67,32 @@ export async function completeOnboarding(
       .single()
 
     if (createError || !newProfile) {
-      console.error('[onboard] profile creation failed:', createError)
       return { error: 'שגיאה ביצירת הפרופיל. נסה שוב.' }
     }
     profileId = newProfile.id
   }
 
-  const profile = { id: profileId }
-
-  // 4. Update profile
   const { error: updateError } = await supabase
     .from('profiles')
     .update({ phone: data.phone, onboarding_done: true })
-    .eq('id', profile.id)
+    .eq('id', profileId)
 
   if (updateError) {
     return { error: 'שגיאה בשמירת הפרופיל. נסה שוב.' }
   }
 
-  // 5. Insert kids
   for (let i = 0; i < data.kids.length; i++) {
     const kid = data.kids[i]
 
     const { data: kidRow, error: kidError } = await supabase
       .from('kids')
       .insert({
-        profile_id: profile.id,
+        profile_id: profileId,
         name: kid.first_name,
         last_name: kid.last_name || null,
         class_name: kid.class_name || null,
         phone: kid.phone || null,
-        school_name: kid.school_name || null,
-        school_address: kid.school_address || null,
+        school_id: kid.school_id || null,
         emoji_avatar: kid.emoji_avatar,
         sort_order: i,
       })
@@ -114,7 +103,6 @@ export async function completeOnboarding(
       return { error: `שגיאה בשמירת פרטי ${kid.first_name}. נסה שוב.` }
     }
 
-    // 6. Insert dietary restrictions for this kid
     if (kid.tag_ids.length > 0) {
       const restrictions = kid.tag_ids.map((tagId) => ({
         kid_id: kidRow.id,

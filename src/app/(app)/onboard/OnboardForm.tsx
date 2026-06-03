@@ -9,13 +9,18 @@ interface DietaryTag {
   label_he: string
 }
 
+interface SchoolOption {
+  id: string
+  name_he: string
+  address: string
+}
+
 interface KidEntry {
   first_name: string
   last_name: string
   class_name: string
   phone: string
-  school_name: string
-  school_address: string
+  school_id: string
   emoji_avatar: string
   tag_ids: string[]
 }
@@ -32,7 +37,7 @@ function isKidValid(k: KidEntry) {
   return (
     k.first_name.trim() !== '' &&
     k.last_name.trim() !== '' &&
-    k.school_name.trim() !== '' &&
+    k.school_id !== '' &&
     k.class_name.trim() !== ''
   )
 }
@@ -43,14 +48,13 @@ function mkKid(): KidEntry {
     last_name: '',
     class_name: '',
     phone: '',
-    school_name: '',
-    school_address: '',
+    school_id: '',
     emoji_avatar: '🧒',
     tag_ids: [],
   }
 }
 
-export default function OnboardForm({ tags }: { tags: DietaryTag[] }) {
+export default function OnboardForm({ tags, schools }: { tags: DietaryTag[]; schools: SchoolOption[] }) {
   const [step, setStep] = useState<1 | 2 | 3>(1)
   const [phone, setPhone] = useState('')
   const [kids, setKids] = useState<KidEntry[]>([mkKid()])
@@ -191,6 +195,22 @@ export default function OnboardForm({ tags }: { tags: DietaryTag[] }) {
             הוסיפו את הילדים שיהנו מהארוחות
           </p>
 
+          {schools.length === 0 && (
+            <div
+              style={{
+                color: '#EF476F',
+                fontSize: '13px',
+                textAlign: 'center',
+                marginBottom: '12px',
+                padding: '10px',
+                background: 'rgba(239,71,111,0.08)',
+                borderRadius: '10px',
+              }}
+            >
+              אין בתי ספר פעילים במערכת. צרו קשר עם הצוות.
+            </div>
+          )}
+
           <div style={{ maxHeight: '340px', overflowY: 'auto', paddingLeft: '4px' }}>
             {kids.map((kid, idx) => (
               <div
@@ -258,20 +278,18 @@ export default function OnboardForm({ tags }: { tags: DietaryTag[] }) {
                     style={{ ...inputStyle, flex: 1 }}
                   />
                 </div>
-                <input
-                  type="text"
-                  placeholder="שם בית הספר *"
-                  value={kid.school_name}
-                  onChange={(e) => updateKid(idx, { school_name: e.target.value })}
-                  style={{ ...inputStyle, marginBottom: '10px' }}
-                />
-                <input
-                  type="text"
-                  placeholder="כתובת בית הספר"
-                  value={kid.school_address}
-                  onChange={(e) => updateKid(idx, { school_address: e.target.value })}
-                  style={{ ...inputStyle, marginBottom: '10px' }}
-                />
+                <select
+                  value={kid.school_id}
+                  onChange={(e) => updateKid(idx, { school_id: e.target.value })}
+                  style={{ ...inputStyle, marginBottom: '10px', appearance: 'none' }}
+                >
+                  <option value="">בחר בית ספר *</option>
+                  {schools.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name_he}
+                    </option>
+                  ))}
+                </select>
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <input
                     type="text"

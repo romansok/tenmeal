@@ -6,23 +6,14 @@ import SubscriptionPanel from './SubscriptionPanel'
 import AccountPanel from './AccountPanel'
 import MenuPanel from './MenuPanel'
 import { ToastProvider } from '@/components/Toast'
-import type { Profile, Kid, Subscription, MenuItem, ExistingOrder, SubscriptionPlan, SubscriptionHistoryItem, DietaryTag, MenuItemWithTags, KidFavorite } from './types'
-
-interface ProfileViewProps {
-  profile: Profile
-  kids: Kid[]
-  subscription: Subscription | null
-  initialMealsRemaining: number
-  mealsTotal: number
-  menuItems: MenuItem[]
-  initialWeekOrders: ExistingOrder[]
-  initialWeekStart: string
-  plans: SubscriptionPlan[]
-  subscriptionHistory: SubscriptionHistoryItem[]
-  dietaryTags: DietaryTag[]
-  menuItemsWithTags: MenuItemWithTags[]
-  kidFavorites: KidFavorite[]
-}
+import type { DashboardData } from './data/loadDashboard'
+import type {
+  CustomSandwich,
+  Kid,
+  KidFavorite,
+  Subscription,
+  SubscriptionHistoryItem,
+} from './types'
 
 type Tab = 'orders' | 'subscription' | 'account' | 'menu'
 
@@ -40,28 +31,39 @@ const TAB_ICONS: Record<Tab, string> = {
   menu: '🍽️',
 }
 
-export default function ProfileView({
-  profile,
-  kids,
-  subscription,
-  initialMealsRemaining,
-  mealsTotal,
-  menuItems,
-  initialWeekOrders,
-  initialWeekStart,
-  plans,
-  subscriptionHistory,
-  dietaryTags,
-  menuItemsWithTags,
-  kidFavorites,
-}: ProfileViewProps) {
+const TABS: Tab[] = ['orders', 'subscription', 'account', 'menu']
+
+interface ProfileViewProps {
+  data: DashboardData
+}
+
+export default function ProfileView({ data }: ProfileViewProps) {
+  const {
+    profile,
+    kids,
+    subscription,
+    initialMealsRemaining,
+    mealsTotal,
+    plans,
+    subscriptionHistory,
+    dietaryTags,
+    schools,
+    menuItemsWithTags,
+    ingredients,
+    customSandwiches,
+    favorites,
+    sandwichPresets,
+    initialWeekOrders,
+  } = data
+
   const [activeTab, setActiveTab] = useState<Tab>('orders')
   const [localKids, setLocalKids] = useState<Kid[]>(kids)
   const [localSubscription, setLocalSubscription] = useState<Subscription | null>(subscription)
   const [mealsRemainingLocal, setMealsRemainingLocal] = useState(initialMealsRemaining)
   const [mealsTotalLocal, setMealsTotalLocal] = useState(mealsTotal)
   const [localHistory, setLocalHistory] = useState<SubscriptionHistoryItem[]>(subscriptionHistory)
-  const [localKidFavorites, setLocalKidFavorites] = useState<KidFavorite[]>(kidFavorites)
+  const [localCustomSandwiches, setLocalCustomSandwiches] = useState<CustomSandwich[]>(customSandwiches)
+  const [localFavorites, setLocalFavorites] = useState<KidFavorite[]>(favorites)
 
   function handleMealsUsed(n: number) {
     setMealsRemainingLocal((prev) => Math.min(mealsTotalLocal, Math.max(0, prev - n)))
@@ -77,14 +79,12 @@ export default function ProfileView({
     setLocalHistory((prev) => [newSub, ...prev])
   }
 
-  const tabs: Tab[] = ['orders', 'subscription', 'account', 'menu']
-
   return (
     <ToastProvider>
     <div dir="rtl">
       {/* Mobile tab bar */}
       <div className="user-tab-bar">
-        {tabs.map((tab) => (
+        {TABS.map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -128,7 +128,7 @@ export default function ProfileView({
 
           {/* Nav items */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '8px 0' }}>
-            {tabs.map((tab) => (
+            {TABS.map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -168,11 +168,15 @@ export default function ProfileView({
               profileId={profile.id}
               kids={localKids}
               subscription={localSubscription}
-              menuItems={menuItems}
+              menuItemsWithTags={menuItemsWithTags}
+              customSandwiches={localCustomSandwiches}
+              favorites={localFavorites}
+              sandwichPresets={sandwichPresets}
+              dietaryTags={dietaryTags}
+              ingredients={ingredients}
               initialWeekOrders={initialWeekOrders}
               mealsRemaining={mealsRemainingLocal}
               onMealsUsed={handleMealsUsed}
-              kidFavorites={localKidFavorites}
             />
           )}
           {activeTab === 'subscription' && (
@@ -191,6 +195,7 @@ export default function ProfileView({
               profile={profile}
               kids={localKids}
               dietaryTags={dietaryTags}
+              schools={schools}
               onKidsChange={setLocalKids}
             />
           )}
@@ -198,9 +203,13 @@ export default function ProfileView({
             <MenuPanel
               kids={localKids}
               menuItemsWithTags={menuItemsWithTags}
-              initialKidFavorites={localKidFavorites}
-              onFavoritesChange={setLocalKidFavorites}
               dietaryTags={dietaryTags}
+              ingredients={ingredients}
+              initialCustomSandwiches={localCustomSandwiches}
+              onCustomSandwichesChange={setLocalCustomSandwiches}
+              favorites={localFavorites}
+              onFavoritesChange={setLocalFavorites}
+              sandwichPresets={sandwichPresets}
             />
           )}
         </div>

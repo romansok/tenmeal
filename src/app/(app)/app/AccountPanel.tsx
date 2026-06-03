@@ -2,56 +2,50 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { updatePhone, addKid, updateKid, removeKid, deleteAccount } from './actions'
-import type { Profile, Kid, DietaryTag } from './types'
+import { addKid, deleteAccount, removeKid, updateKid, updatePhone } from './actions'
+import KidForm from './account/KidForm'
+import GlassCard from './ui/GlassCard'
+import type { DietaryTag, Kid, KidInput, Profile, School } from './types'
 
 interface AccountPanelProps {
   profile: Profile
   kids: Kid[]
   dietaryTags: DietaryTag[]
+  schools: School[]
   onKidsChange: (kids: Kid[]) => void
 }
 
-const EMOJI_OPTIONS = ['🧒', '👦', '👧', '🌟', '🦁', '🐻', '🐼', '🚀', '🦊', '🐯', '🐶', '🐱', '🐰', '🦄', '🎈', '🎀', '⭐', '🌈', '🎨', '⚽']
-
-const glass: React.CSSProperties = {
-  background: 'rgba(255,255,255,0.18)',
-  backdropFilter: 'blur(12px) saturate(180%)',
-  border: '1px solid rgba(255,255,255,0.35)',
-  boxShadow: '0 8px 32px rgba(31,38,135,0.12)',
-  borderRadius: 20,
-  padding: 24,
-}
-
-interface KidFormData {
-  first_name: string
-  last_name: string
-  class_name: string
-  phone: string
-  emoji_avatar: string
-  school_name: string
-  school_address: string
-  dietary_tag_ids: string[]
-}
-
-function emptyForm(): KidFormData {
-  return { first_name: '', last_name: '', class_name: '', phone: '', emoji_avatar: '🧒', school_name: '', school_address: '', dietary_tag_ids: [] }
-}
-
-function formFromKid(kid: Kid): KidFormData {
+/** Reconstruct a Kid view-row after updateKid succeeds. */
+function patchKid(
+  prev: Kid,
+  input: KidInput,
+  schools: School[],
+  dietaryTags: DietaryTag[]
+): Kid {
+  const newSchool = schools.find((s) => s.id === input.school_id) ?? null
   return {
-    first_name: kid.name,
-    last_name: kid.last_name ?? '',
-    class_name: kid.class_name ?? '',
-    phone: kid.phone ?? '',
-    emoji_avatar: kid.emoji_avatar,
-    school_name: kid.school_name ?? '',
-    school_address: kid.school_address ?? '',
-    dietary_tag_ids: kid.kid_dietary_restrictions.map((r) => r.dietary_tag_id),
+    ...prev,
+    name: input.name.trim(),
+    last_name: input.last_name?.trim() || null,
+    class_name: input.class_name?.trim() || null,
+    phone: input.phone?.trim() || null,
+    emoji_avatar: input.emoji_avatar,
+    school_id: input.school_id,
+    school: newSchool,
+    kid_dietary_restrictions: input.dietary_tag_ids.map((tagId) => {
+      const tag = dietaryTags.find((t) => t.id === tagId) ?? null
+      return { dietary_tag_id: tagId, dietary_tags: tag }
+    }),
   }
 }
 
-export default function AccountPanel({ profile, kids, dietaryTags, onKidsChange }: AccountPanelProps) {
+export default function AccountPanel({
+  profile,
+  kids,
+  dietaryTags,
+  schools,
+  onKidsChange,
+}: AccountPanelProps) {
   const router = useRouter()
 
   // Phone
@@ -62,10 +56,9 @@ export default function AccountPanel({ profile, kids, dietaryTags, onKidsChange 
   const [phoneSuccess, setPhoneSuccess] = useState(false)
   const [isPhonePending, startPhoneTransition] = useTransition()
 
-  // Kids form
+  // Kid form
   const [editingKidId, setEditingKidId] = useState<string | 'new' | null>(null)
-  const [formData, setFormData] = useState<KidFormData>(emptyForm())
-  const [formError, setFormError] = useState('')
+  const [formError, setFormError] = useState<string | null>(null)
   const [isKidPending, startKidTransition] = useTransition()
   const [removingKidId, setRemovingKidId] = useState<string | null>(null)
 
@@ -73,44 +66,6 @@ export default function AccountPanel({ profile, kids, dietaryTags, onKidsChange 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleteError, setDeleteError] = useState('')
   const [isDeletePending, startDeleteTransition] = useTransition()
-
-  function handleDeleteAccount() {
-    setDeleteError('')
-    startDeleteTransition(async () => {
-      const result = await deleteAccount()
-      if ('error' in result) {
-        setDeleteError(result.error)
-      } else {
-        router.push('/login')
-      }
-    })
-  }
-
-  function openAdd() {
-    setFormData(emptyForm())
-    setFormError('')
-    setEditingKidId('new')
-  }
-
-  function openEdit(kid: Kid) {
-    setFormData(formFromKid(kid))
-    setFormError('')
-    setEditingKidId(kid.id)
-  }
-
-  function cancelForm() {
-    setEditingKidId(null)
-    setFormError('')
-  }
-
-  function toggleTag(tagId: string) {
-    setFormData((prev) => ({
-      ...prev,
-      dietary_tag_ids: prev.dietary_tag_ids.includes(tagId)
-        ? prev.dietary_tag_ids.filter((t) => t !== tagId)
-        : [...prev.dietary_tag_ids, tagId],
-    }))
-  }
 
   function handlePhoneSave() {
     setPhoneError('')
@@ -128,67 +83,32 @@ export default function AccountPanel({ profile, kids, dietaryTags, onKidsChange 
     })
   }
 
-  function handleKidSave() {
-    if (!formData.first_name.trim()) {
+  function handleKidSubmit(input: KidInput) {
+    if (!input.name.trim()) {
       setFormError('יש להזין שם פרטי.')
       return
     }
-    setFormError('')
+    setFormError(null)
 
     if (editingKidId === 'new') {
       startKidTransition(async () => {
-        const result = await addKid({
-          name: formData.first_name,
-          last_name: formData.last_name || null,
-          class_name: formData.class_name || null,
-          phone: formData.phone || null,
-          emoji_avatar: formData.emoji_avatar,
-          school_name: formData.school_name || null,
-          school_address: formData.school_address || null,
-          dietary_tag_ids: formData.dietary_tag_ids,
-        })
+        const result = await addKid(input)
         if ('error' in result) {
           setFormError(result.error)
         } else {
-          onKidsChange([...kids, result.kid as unknown as Kid])
+          onKidsChange([...kids, result.kid])
           setEditingKidId(null)
         }
       })
     } else if (editingKidId) {
       const kidId = editingKidId
       startKidTransition(async () => {
-        const result = await updateKid(kidId, {
-          name: formData.first_name,
-          last_name: formData.last_name || null,
-          class_name: formData.class_name || null,
-          phone: formData.phone || null,
-          emoji_avatar: formData.emoji_avatar,
-          school_name: formData.school_name || null,
-          school_address: formData.school_address || null,
-          dietary_tag_ids: formData.dietary_tag_ids,
-        })
+        const result = await updateKid(kidId, input)
         if ('error' in result) {
           setFormError(result.error)
         } else {
           onKidsChange(
-            kids.map((k) =>
-              k.id === kidId
-                ? {
-                    ...k,
-                    name: formData.first_name.trim(),
-                    last_name: formData.last_name.trim() || null,
-                    class_name: formData.class_name.trim() || null,
-                    phone: formData.phone.trim() || null,
-                    emoji_avatar: formData.emoji_avatar,
-                    school_name: formData.school_name.trim() || null,
-                    school_address: formData.school_address.trim() || null,
-                    kid_dietary_restrictions: formData.dietary_tag_ids.map((tagId) => {
-                      const tag = dietaryTags.find((t) => t.id === tagId) ?? null
-                      return { dietary_tag_id: tagId, dietary_tags: tag }
-                    }),
-                  }
-                : k
-            )
+            kids.map((k) => (k.id === kidId ? patchKid(k, input, schools, dietaryTags) : k))
           )
           setEditingKidId(null)
         }
@@ -210,188 +130,27 @@ export default function AccountPanel({ profile, kids, dietaryTags, onKidsChange 
     })
   }
 
-  const formCard = (
-    <div
-      style={{
-        background: 'rgba(255,107,53,0.06)',
-        border: '1.5px solid rgba(255,107,53,0.25)',
-        borderRadius: 16,
-        padding: 16,
-        marginTop: 8,
-      }}
-    >
-      {/* Emoji picker */}
-      <div style={{ marginBottom: 12 }}>
-        <div style={{ fontSize: 12, color: 'rgba(44,24,16,0.5)', fontWeight: 600, marginBottom: 8 }}>אווטאר</div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-          {EMOJI_OPTIONS.map((e) => (
-            <button
-              key={e}
-              onClick={() => setFormData((p) => ({ ...p, emoji_avatar: e }))}
-              style={{
-                width: 36, height: 36, borderRadius: 10, border: 'none', fontSize: 20,
-                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                background: formData.emoji_avatar === e ? 'rgba(255,107,53,0.18)' : 'rgba(255,255,255,0.5)',
-                boxShadow: formData.emoji_avatar === e ? '0 0 0 2px #FF6B35' : 'none',
-                transition: 'all 150ms',
-              }}
-            >
-              {e}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* First + Last name */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 12, color: 'rgba(44,24,16,0.5)', fontWeight: 600, marginBottom: 4 }}>שם פרטי *</div>
-          <input
-            type="text"
-            value={formData.first_name}
-            onChange={(e) => setFormData((p) => ({ ...p, first_name: e.target.value }))}
-            className="input-field"
-            style={{ padding: '8px 12px', width: '100%', boxSizing: 'border-box' }}
-            placeholder="שם פרטי"
-            autoFocus
-          />
-        </div>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 12, color: 'rgba(44,24,16,0.5)', fontWeight: 600, marginBottom: 4 }}>שם משפחה</div>
-          <input
-            type="text"
-            value={formData.last_name}
-            onChange={(e) => setFormData((p) => ({ ...p, last_name: e.target.value }))}
-            className="input-field"
-            style={{ padding: '8px 12px', width: '100%', boxSizing: 'border-box' }}
-            placeholder="שם משפחה"
-          />
-        </div>
-      </div>
-
-      {/* Class + Phone */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 12, color: 'rgba(44,24,16,0.5)', fontWeight: 600, marginBottom: 4 }}>כיתה</div>
-          <input
-            type="text"
-            value={formData.class_name}
-            onChange={(e) => setFormData((p) => ({ ...p, class_name: e.target.value }))}
-            className="input-field"
-            style={{ padding: '8px 12px', width: '100%', boxSizing: 'border-box' }}
-            placeholder="למשל: ב׳"
-          />
-        </div>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 12, color: 'rgba(44,24,16,0.5)', fontWeight: 600, marginBottom: 4 }}>טלפון ילד/ה</div>
-          <input
-            type="tel"
-            value={formData.phone}
-            onChange={(e) => setFormData((p) => ({ ...p, phone: e.target.value }))}
-            className="input-field"
-            style={{ padding: '8px 12px', width: '100%', boxSizing: 'border-box' }}
-            placeholder="05X-XXXXXXX"
-            dir="ltr"
-          />
-        </div>
-      </div>
-
-      {/* School name */}
-      <div style={{ marginBottom: 10 }}>
-        <div style={{ fontSize: 12, color: 'rgba(44,24,16,0.5)', fontWeight: 600, marginBottom: 4 }}>שם בית ספר</div>
-        <input
-          type="text"
-          value={formData.school_name}
-          onChange={(e) => setFormData((p) => ({ ...p, school_name: e.target.value }))}
-          className="input-field"
-          style={{ padding: '8px 12px', width: '100%', boxSizing: 'border-box' }}
-          placeholder="למשל: בית ספר יסודי רמות"
-        />
-      </div>
-
-      {/* School address */}
-      <div style={{ marginBottom: 10 }}>
-        <div style={{ fontSize: 12, color: 'rgba(44,24,16,0.5)', fontWeight: 600, marginBottom: 4 }}>כתובת בית ספר (אופציונלי)</div>
-        <input
-          type="text"
-          value={formData.school_address}
-          onChange={(e) => setFormData((p) => ({ ...p, school_address: e.target.value }))}
-          className="input-field"
-          style={{ padding: '8px 12px', width: '100%', boxSizing: 'border-box' }}
-          placeholder="למשל: רחוב הרצל 5, תל אביב"
-        />
-      </div>
-
-      {/* Dietary tags */}
-      {dietaryTags.length > 0 && (
-        <div style={{ marginBottom: 12 }}>
-          <div style={{ fontSize: 12, color: 'rgba(44,24,16,0.5)', fontWeight: 600, marginBottom: 8 }}>הגבלות תזונה</div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-            {dietaryTags.map((tag) => {
-              const selected = formData.dietary_tag_ids.includes(tag.id)
-              return (
-                <button
-                  key={tag.id}
-                  onClick={() => toggleTag(tag.id)}
-                  style={{
-                    padding: '5px 12px', borderRadius: 20, border: 'none', fontSize: 12,
-                    fontWeight: 600, cursor: 'pointer',
-                    background: selected ? '#FF6B35' : 'rgba(44,24,16,0.08)',
-                    color: selected ? 'white' : '#2C1810',
-                    transition: 'all 150ms',
-                  }}
-                >
-                  {tag.label_he}
-                </button>
-              )
-            })}
-          </div>
-        </div>
-      )}
-
-      {formError && (
-        <div style={{ color: '#EF476F', fontSize: 12, marginBottom: 10, padding: '6px 10px', background: 'rgba(239,71,111,0.08)', borderRadius: 8 }}>
-          {formError}
-        </div>
-      )}
-
-      <div style={{ display: 'flex', gap: 8 }}>
-        <button
-          onClick={handleKidSave}
-          disabled={isKidPending}
-          style={{
-            padding: '8px 20px', borderRadius: 10, border: 'none', fontSize: 14,
-            fontWeight: 600, cursor: 'pointer',
-            background: isKidPending ? 'rgba(255,107,53,0.4)' : '#FF6B35',
-            color: 'white',
-          }}
-        >
-          {isKidPending ? '...' : editingKidId === 'new' ? 'הוסף' : 'שמור'}
-        </button>
-        <button
-          onClick={cancelForm}
-          disabled={isKidPending}
-          style={{
-            padding: '8px 14px', borderRadius: 10, border: 'none', fontSize: 14,
-            fontWeight: 600, cursor: 'pointer',
-            background: 'rgba(44,24,16,0.08)', color: '#2C1810',
-          }}
-        >
-          ביטול
-        </button>
-      </div>
-    </div>
-  )
+  function handleDeleteAccount() {
+    setDeleteError('')
+    startDeleteTransition(async () => {
+      const result = await deleteAccount()
+      if ('error' in result) {
+        setDeleteError(result.error)
+      } else {
+        router.push('/login')
+      }
+    })
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
       {/* Profile info */}
-      <div style={glass}>
+      <GlassCard padding={24}>
         <div style={{ fontSize: 15, fontWeight: 700, color: '#2C1810', marginBottom: 20 }}>
           פרטי חשבון
         </div>
 
-        {/* Avatar + name row */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
           {profile.avatar_url ? (
             <img
@@ -400,39 +159,29 @@ export default function AccountPanel({ profile, kids, dietaryTags, onKidsChange 
               style={{ width: 56, height: 56, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
             />
           ) : (
-            <div
-              style={{
-                width: 56, height: 56, borderRadius: '50%', flexShrink: 0,
-                background: 'linear-gradient(135deg, #FFB347, #FF6B35)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                color: 'white', fontSize: 24, fontWeight: 700,
-              }}
-            >
+            <div style={{
+              width: 56, height: 56, borderRadius: '50%', flexShrink: 0,
+              background: 'linear-gradient(135deg, #FFB347, #FF6B35)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: 'white', fontSize: 24, fontWeight: 700,
+            }}>
               {(profile.full_name ?? 'U')[0]}
             </div>
           )}
-          <div>
-            <div style={{ fontSize: 17, fontWeight: 700, color: '#2C1810' }}>
-              {profile.full_name ?? 'שם לא הוגדר'}
-            </div>
+          <div style={{ fontSize: 17, fontWeight: 700, color: '#2C1810' }}>
+            {profile.full_name ?? 'שם לא הוגדר'}
           </div>
         </div>
 
-        {/* Email */}
         <div style={{ marginBottom: 16 }}>
-          <div style={{ fontSize: 12, color: 'rgba(44,24,16,0.5)', marginBottom: 4, fontWeight: 600 }}>
-            אימייל
-          </div>
+          <div style={{ fontSize: 12, color: 'rgba(44,24,16,0.5)', marginBottom: 4, fontWeight: 600 }}>אימייל</div>
           <div style={{ fontSize: 15, color: '#2C1810', direction: 'ltr', unicodeBidi: 'plaintext' as const }}>
             {profile.email ?? 'לא ידוע'}
           </div>
         </div>
 
-        {/* Phone */}
         <div>
-          <div style={{ fontSize: 12, color: 'rgba(44,24,16,0.5)', marginBottom: 6, fontWeight: 600 }}>
-            טלפון
-          </div>
+          <div style={{ fontSize: 12, color: 'rgba(44,24,16,0.5)', marginBottom: 6, fontWeight: 600 }}>טלפון</div>
           {editingPhone ? (
             <div>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -471,7 +220,10 @@ export default function AccountPanel({ profile, kids, dietaryTags, onKidsChange 
                 </button>
               </div>
               {phoneError && (
-                <div style={{ color: '#EF476F', fontSize: 12, marginTop: 6, padding: '6px 10px', background: 'rgba(239,71,111,0.08)', borderRadius: 8 }}>
+                <div style={{
+                  color: '#EF476F', fontSize: 12, marginTop: 6,
+                  padding: '6px 10px', background: 'rgba(239,71,111,0.08)', borderRadius: 8,
+                }}>
                   {phoneError}
                 </div>
               )}
@@ -494,15 +246,15 @@ export default function AccountPanel({ profile, kids, dietaryTags, onKidsChange 
             <div style={{ color: '#4CAF82', fontSize: 12, marginTop: 6 }}>הטלפון עודכן בהצלחה</div>
           )}
         </div>
-      </div>
+      </GlassCard>
 
       {/* Kids */}
-      <div style={glass}>
+      <GlassCard padding={24}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
           <div style={{ fontSize: 15, fontWeight: 700, color: '#2C1810' }}>ילדים רשומים</div>
           {editingKidId !== 'new' && (
             <button
-              onClick={openAdd}
+              onClick={() => { setFormError(null); setEditingKidId('new') }}
               style={{
                 display: 'flex', alignItems: 'center', gap: 4,
                 padding: '6px 14px', borderRadius: 10, border: 'none',
@@ -525,89 +277,45 @@ export default function AccountPanel({ profile, kids, dietaryTags, onKidsChange 
           {kids.map((kid) => (
             <div key={kid.id}>
               {editingKidId === kid.id ? (
-                formCard
+                <KidForm
+                  kid={kid}
+                  schools={schools}
+                  dietaryTags={dietaryTags}
+                  isPending={isKidPending}
+                  error={formError}
+                  onCancel={() => { setEditingKidId(null); setFormError(null) }}
+                  onSubmit={handleKidSubmit}
+                />
               ) : (
-                <div
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 10,
-                    padding: '10px 12px', borderRadius: 14,
-                    background: 'rgba(255,255,255,0.5)',
-                    border: '1px solid rgba(255,255,255,0.6)',
-                    opacity: removingKidId === kid.id ? 0.4 : 1,
-                    transition: 'opacity 150ms',
-                  }}
-                >
-                  <span style={{ fontSize: 24, flexShrink: 0 }}>{kid.emoji_avatar}</span>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: '#2C1810' }}>
-                      {kid.name}{kid.last_name ? ` ${kid.last_name}` : ''}
-                    </div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginTop: 2 }}>
-                      {kid.class_name && (
-                        <span style={{ fontSize: 12, color: 'rgba(44,24,16,0.5)', fontWeight: 600 }}>
-                          {kid.class_name}
-                        </span>
-                      )}
-                      {kid.school_name && (
-                        <span style={{ fontSize: 12, color: 'rgba(44,24,16,0.5)' }}>
-                          {kid.school_name}
-                        </span>
-                      )}
-                      {kid.phone && (
-                        <span style={{ fontSize: 12, color: 'rgba(44,24,16,0.5)', direction: 'ltr', unicodeBidi: 'plaintext' as const }}>
-                          {kid.phone}
-                        </span>
-                      )}
-                      {kid.kid_dietary_restrictions.map((r) =>
-                        r.dietary_tags ? (
-                          <span
-                            key={r.dietary_tag_id}
-                            style={{
-                              fontSize: 11, padding: '2px 8px', borderRadius: 20,
-                              background: 'rgba(255,107,53,0.1)', color: '#FF6B35', fontWeight: 600,
-                            }}
-                          >
-                            {r.dietary_tags.label_he}
-                          </span>
-                        ) : null
-                      )}
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-                    <button
-                      onClick={() => openEdit(kid)}
-                      disabled={isKidPending}
-                      style={{ background: 'none', border: 'none', fontSize: 15, cursor: 'pointer', padding: 6, lineHeight: 1, borderRadius: 8 }}
-                      title="ערוך"
-                    >
-                      ✏️
-                    </button>
-                    <button
-                      onClick={() => handleKidRemove(kid.id)}
-                      disabled={isKidPending}
-                      style={{
-                        background: 'none', border: 'none', fontSize: 15, cursor: 'pointer',
-                        padding: 6, lineHeight: 1, borderRadius: 8, color: '#EF476F',
-                        opacity: isKidPending ? 0.4 : 1,
-                      }}
-                      title="הסר"
-                    >
-                      🗑️
-                    </button>
-                  </div>
-                </div>
+                <KidRow
+                  kid={kid}
+                  isRemoving={removingKidId === kid.id}
+                  isBusy={isKidPending}
+                  onEdit={() => { setFormError(null); setEditingKidId(kid.id) }}
+                  onRemove={() => handleKidRemove(kid.id)}
+                />
               )}
             </div>
           ))}
 
-          {editingKidId === 'new' && formCard}
+          {editingKidId === 'new' && (
+            <KidForm
+              kid={null}
+              schools={schools}
+              dietaryTags={dietaryTags}
+              isPending={isKidPending}
+              error={formError}
+              onCancel={() => { setEditingKidId(null); setFormError(null) }}
+              onSubmit={handleKidSubmit}
+            />
+          )}
         </div>
-      </div>
+      </GlassCard>
 
       {/* Danger zone */}
-      <div
+      <GlassCard
+        padding={24}
         style={{
-          ...glass,
           border: '1px solid rgba(239,71,111,0.25)',
           background: 'rgba(239,71,111,0.04)',
         }}
@@ -628,65 +336,170 @@ export default function AccountPanel({ profile, kids, dietaryTags, onKidsChange 
         >
           מחק חשבון
         </button>
-      </div>
+      </GlassCard>
 
-      {/* Confirmation modal */}
       {showDeleteConfirm && (
-        <div
-          style={{
-            position: 'fixed', inset: 0, zIndex: 1000,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: 'rgba(44,24,16,0.45)',
-            backdropFilter: 'blur(4px)',
-          }}
-          onClick={() => { if (!isDeletePending) setShowDeleteConfirm(false) }}
+        <DeleteAccountModal
+          isPending={isDeletePending}
+          error={deleteError}
+          onConfirm={handleDeleteAccount}
+          onCancel={() => { setShowDeleteConfirm(false); setDeleteError('') }}
+        />
+      )}
+    </div>
+  )
+}
+
+interface KidRowProps {
+  kid: Kid
+  isRemoving: boolean
+  isBusy: boolean
+  onEdit: () => void
+  onRemove: () => void
+}
+
+function KidRow({ kid, isRemoving, isBusy, onEdit, onRemove }: KidRowProps) {
+  return (
+    <div
+      style={{
+        display: 'flex', alignItems: 'center', gap: 10,
+        padding: '10px 12px', borderRadius: 14,
+        background: 'rgba(255,255,255,0.5)',
+        border: '1px solid rgba(255,255,255,0.6)',
+        opacity: isRemoving ? 0.4 : 1,
+        transition: 'opacity 150ms',
+      }}
+    >
+      <span style={{ fontSize: 24, flexShrink: 0 }}>{kid.emoji_avatar}</span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 14, fontWeight: 700, color: '#2C1810' }}>
+          {kid.name}{kid.last_name ? ` ${kid.last_name}` : ''}
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginTop: 2 }}>
+          {kid.class_name && (
+            <span style={{ fontSize: 12, color: 'rgba(44,24,16,0.5)', fontWeight: 600 }}>
+              {kid.class_name}
+            </span>
+          )}
+          {kid.school && (
+            <span style={{ fontSize: 12, color: 'rgba(44,24,16,0.5)' }}>{kid.school.name_he}</span>
+          )}
+          {kid.phone && (
+            <span style={{ fontSize: 12, color: 'rgba(44,24,16,0.5)', direction: 'ltr', unicodeBidi: 'plaintext' as const }}>
+              {kid.phone}
+            </span>
+          )}
+          {kid.kid_dietary_restrictions.map((r) =>
+            r.dietary_tags ? (
+              <span
+                key={r.dietary_tag_id}
+                style={{
+                  fontSize: 11, padding: '2px 8px', borderRadius: 20,
+                  background: 'rgba(255,107,53,0.1)', color: '#FF6B35', fontWeight: 600,
+                }}
+              >
+                {r.dietary_tags.label_he}
+              </span>
+            ) : null
+          )}
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+        <button
+          onClick={onEdit}
+          disabled={isBusy}
+          style={{ background: 'none', border: 'none', fontSize: 15, cursor: 'pointer', padding: 6, lineHeight: 1, borderRadius: 8 }}
+          title="ערוך"
         >
-          <div
-            onClick={(e) => e.stopPropagation()}
+          ✏️
+        </button>
+        <button
+          onClick={onRemove}
+          disabled={isBusy}
+          style={{
+            background: 'none', border: 'none', fontSize: 15, cursor: 'pointer',
+            padding: 6, lineHeight: 1, borderRadius: 8, color: '#EF476F',
+            opacity: isBusy ? 0.4 : 1,
+          }}
+          title="הסר"
+        >
+          🗑️
+        </button>
+      </div>
+    </div>
+  )
+}
+
+interface DeleteAccountModalProps {
+  isPending: boolean
+  error: string
+  onConfirm: () => void
+  onCancel: () => void
+}
+
+function DeleteAccountModal({ isPending, error, onConfirm, onCancel }: DeleteAccountModalProps) {
+  return (
+    <div
+      style={{
+        position: 'fixed', inset: 0, zIndex: 1000,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: 'rgba(44,24,16,0.45)',
+        backdropFilter: 'blur(4px)',
+      }}
+      onClick={() => { if (!isPending) onCancel() }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: 'rgba(255,255,255,0.92)',
+          backdropFilter: 'blur(12px) saturate(180%)',
+          border: '1px solid rgba(255,255,255,0.35)',
+          boxShadow: '0 8px 32px rgba(31,38,135,0.12)',
+          borderRadius: 20,
+          padding: 24,
+          maxWidth: 360, width: '90%',
+        }}
+      >
+        <div style={{ fontSize: 18, fontWeight: 700, color: '#2C1810', marginBottom: 12 }}>
+          מחיקת חשבון לצמיתות
+        </div>
+        <div style={{ fontSize: 14, color: 'rgba(44,24,16,0.65)', marginBottom: 20, lineHeight: 1.6 }}>
+          האם אתה בטוח? פעולה זו תמחק לצמיתות את כל הנתונים שלך ואת חשבונך. לא ניתן לבטל פעולה זו.
+        </div>
+        {error && (
+          <div style={{
+            color: '#EF476F', fontSize: 13, marginBottom: 14,
+            padding: '8px 12px', background: 'rgba(239,71,111,0.08)', borderRadius: 10,
+          }}>
+            {error}
+          </div>
+        )}
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button
+            onClick={onConfirm}
+            disabled={isPending}
             style={{
-              ...glass,
-              maxWidth: 360, width: '90%',
-              background: 'rgba(255,255,255,0.92)',
+              flex: 1, padding: '10px 0', borderRadius: 12, border: 'none',
+              background: isPending ? 'rgba(239,71,111,0.4)' : '#EF476F',
+              color: 'white', fontSize: 14, fontWeight: 700,
+              cursor: isPending ? 'default' : 'pointer',
             }}
           >
-            <div style={{ fontSize: 18, fontWeight: 700, color: '#2C1810', marginBottom: 12 }}>
-              מחיקת חשבון לצמיתות
-            </div>
-            <div style={{ fontSize: 14, color: 'rgba(44,24,16,0.65)', marginBottom: 20, lineHeight: 1.6 }}>
-              האם אתה בטוח? פעולה זו תמחק לצמיתות את כל הנתונים שלך ואת חשבונך. לא ניתן לבטל פעולה זו.
-            </div>
-            {deleteError && (
-              <div style={{ color: '#EF476F', fontSize: 13, marginBottom: 14, padding: '8px 12px', background: 'rgba(239,71,111,0.08)', borderRadius: 10 }}>
-                {deleteError}
-              </div>
-            )}
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button
-                onClick={handleDeleteAccount}
-                disabled={isDeletePending}
-                style={{
-                  flex: 1, padding: '10px 0', borderRadius: 12, border: 'none',
-                  background: isDeletePending ? 'rgba(239,71,111,0.4)' : '#EF476F',
-                  color: 'white', fontSize: 14, fontWeight: 700, cursor: isDeletePending ? 'default' : 'pointer',
-                }}
-              >
-                {isDeletePending ? 'מוחק...' : 'כן, מחק לצמיתות'}
-              </button>
-              <button
-                onClick={() => { setShowDeleteConfirm(false); setDeleteError('') }}
-                disabled={isDeletePending}
-                style={{
-                  flex: 1, padding: '10px 0', borderRadius: 12, border: 'none',
-                  background: 'rgba(44,24,16,0.08)', color: '#2C1810',
-                  fontSize: 14, fontWeight: 600, cursor: 'pointer',
-                }}
-              >
-                ביטול
-              </button>
-            </div>
-          </div>
+            {isPending ? 'מוחק...' : 'כן, מחק לצמיתות'}
+          </button>
+          <button
+            onClick={onCancel}
+            disabled={isPending}
+            style={{
+              flex: 1, padding: '10px 0', borderRadius: 12, border: 'none',
+              background: 'rgba(44,24,16,0.08)', color: '#2C1810',
+              fontSize: 14, fontWeight: 600, cursor: 'pointer',
+            }}
+          >
+            ביטול
+          </button>
         </div>
-      )}
+      </div>
     </div>
   )
 }

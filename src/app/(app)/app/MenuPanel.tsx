@@ -1,93 +1,142 @@
 'use client'
 
-import { useState, useTransition } from 'react'
-import { toggleKidFavorite } from './actions'
-import type { Kid, MenuItemWithTags, KidFavorite, DietaryTag } from './types'
+import { type Dispatch, type SetStateAction, useState } from 'react'
+import {
+  getKidRequiredSlugs,
+  isCustomSandwichCompatible,
+  isMenuItemCompatible,
+  isPresetCompatible,
+} from './dietary'
+import SandwichBuilder from './menu/SandwichBuilder'
+import { useFavoriteToggle } from './menu/useFavoriteToggle'
+import GlassCard from './ui/GlassCard'
+import { SANDWICH_BUILDER_CATEGORIES } from './types'
+import type {
+  CustomSandwich,
+  DietaryTag,
+  IngredientOption,
+  Kid,
+  KidFavorite,
+  MenuItemWithTags,
+  SandwichPreset,
+} from './types'
 
 interface MenuPanelProps {
   kids: Kid[]
   menuItemsWithTags: MenuItemWithTags[]
-  initialKidFavorites: KidFavorite[]
   dietaryTags: DietaryTag[]
-  onFavoritesChange: (favorites: KidFavorite[]) => void
+  ingredients: IngredientOption[]
+  initialCustomSandwiches: CustomSandwich[]
+  onCustomSandwichesChange: (sandwiches: CustomSandwich[]) => void
+  favorites: KidFavorite[]
+  onFavoritesChange: Dispatch<SetStateAction<KidFavorite[]>>
+  sandwichPresets: SandwichPreset[]
 }
 
-type FavoriteKey = string // `${kidId}:${menuItemId}`
-type MenuSection = 'ready' | 'custom'
-
-function buildFavoriteSet(favorites: KidFavorite[]): Set<FavoriteKey> {
-  return new Set(favorites.map((f) => `${f.kid_id}:${f.menu_item_id}`))
-}
-
-function getCompatibleItems(kid: Kid, items: MenuItemWithTags[]): MenuItemWithTags[] {
-  const kidTagIds = kid.kid_dietary_restrictions.map((r) => r.dietary_tag_id)
-  if (kidTagIds.length === 0) return items
-  return items.filter((item) => kidTagIds.every((tagId) => item.dietary_tag_ids.includes(tagId)))
-}
-
-const glass: React.CSSProperties = {
-  background: 'rgba(255,255,255,0.18)',
-  backdropFilter: 'blur(12px) saturate(180%)',
-  border: '1px solid rgba(255,255,255,0.35)',
-  boxShadow: '0 8px 32px rgba(31,38,135,0.12)',
-  borderRadius: 20,
-  padding: 16,
-}
+type MenuSection = 'meals' | 'custom'
 
 const SECTIONS: { id: MenuSection; label: string; icon: string }[] = [
-  { id: 'ready', label: 'מנות מוכנות', icon: '🍱' },
-  { id: 'custom', label: 'בנה כריך', icon: '🥪' },
+  { id: 'meals',  label: 'הארוחות שלי', icon: '🍱' },
+  { id: 'custom', label: 'בנה כריך',    icon: '🥪' },
 ]
 
-export default function MenuPanel({ kids, menuItemsWithTags, initialKidFavorites, dietaryTags, onFavoritesChange }: MenuPanelProps) {
-  const [selectedKidId, setSelectedKidId] = useState(kids[0]?.id ?? '')
-  const [activeSection, setActiveSection] = useState<MenuSection>('ready')
-  const [favorites, setFavorites] = useState<Set<FavoriteKey>>(() => buildFavoriteSet(initialKidFavorites))
-  const [actionError, setActionError] = useState<string | null>(null)
-  const [isPending, startTransition] = useTransition()
+function HeartButton({
+  on,
+  pending,
+  onClick,
+}: { on: boolean; pending: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={pending}
+      aria-label={on ? 'הסר מהמועדפים' : 'הוסף למועדפים'}
+      style={{
+        width: 38, height: 38, borderRadius: '50%',
+        border: 'none', flexShrink: 0,
+        background: on ? 'rgba(255,107,53,0.15)' : 'rgba(255,255,255,0.5)',
+        color: on ? '#FF6B35' : 'rgba(44,24,16,0.4)',
+        cursor: pending ? 'default' : 'pointer',
+        fontSize: 18,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        transition: 'all 150ms ease-out',
+      }}
+    >
+      {on ? '❤️' : '🤍'}
+    </button>
+  )
+}
 
-  function favSetToArray(set: Set<FavoriteKey>): KidFavorite[] {
-    return Array.from(set).map((key) => {
-      const [kid_id, menu_item_id] = key.split(':')
-      return { kid_id, menu_item_id }
-    })
-  }
+function TagBadgeRow({ labels }: { labels: string[] }) {
+  if (labels.length === 0) return null
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+      {labels.map((label) => (
+        <span key={label} style={{
+          fontSize: 11, padding: '2px 8px', borderRadius: 20,
+          background: 'rgba(255,107,53,0.10)', color: '#FF6B35', fontWeight: 600,
+        }}>
+          {label}
+        </span>
+      ))}
+    </div>
+  )
+}
+
+export default function MenuPanel({
+  kids,
+  menuItemsWithTags,
+  dietaryTags,
+  ingredients,
+  initialCustomSandwiches,
+  onCustomSandwichesChange,
+  favorites,
+  onFavoritesChange,
+  sandwichPresets,
+}: MenuPanelProps) {
+  const [selectedKidId, setSelectedKidId] = useState(kids[0]?.id ?? '')
+  const [activeSection, setActiveSection] = useState<MenuSection>('meals')
+  const [savedSandwiches, setSavedSandwiches] = useState<CustomSandwich[]>(initialCustomSandwiches)
 
   const selectedKid = kids.find((k) => k.id === selectedKidId) ?? null
-  const visibleItems = selectedKid ? getCompatibleItems(selectedKid, menuItemsWithTags) : []
-  const tagLabelMap = Object.fromEntries(dietaryTags.map((t) => [t.id, t.label_he]))
 
-  function handleToggleFavorite(menuItemId: string) {
-    if (!selectedKid) return
-    const key: FavoriteKey = `${selectedKid.id}:${menuItemId}`
-    const wasOn = favorites.has(key)
+  const tagLabelById = new Map(dietaryTags.map((t) => [t.id, t.label_he]))
+  const tagLabelBySlug = new Map(dietaryTags.map((t) => [t.slug, t.label_he]))
 
-    setFavorites((prev) => {
-      const next = new Set(prev)
-      wasOn ? next.delete(key) : next.add(key)
-      onFavoritesChange(favSetToArray(next))
-      return next
-    })
-    setActionError(null)
+  const compatibleMenuItems = menuItemsWithTags.filter((m) => isMenuItemCompatible(selectedKid, m))
+  const compatibleSandwichPresets = sandwichPresets.filter((p) => isPresetCompatible(selectedKid, p, dietaryTags))
 
-    startTransition(async () => {
-      const result = await toggleKidFavorite(selectedKid.id, menuItemId, !wasOn)
-      if ('error' in result) {
-        setFavorites((prev) => {
-          const next = new Set(prev)
-          wasOn ? next.add(key) : next.delete(key)
-          onFavoritesChange(favSetToArray(next))
-          return next
-        })
-        setActionError(result.error)
-      }
-    })
+  const kidRequiredSlugs = getKidRequiredSlugs(selectedKid, dietaryTags)
+  const isIngredientCompatible = (ing: IngredientOption): boolean =>
+    kidRequiredSlugs.every((s) => ing.dietary_tag_slugs.includes(s))
+
+  const kidFavorites = favorites.filter((f) => f.kid_id === selectedKidId)
+  const favoritedMenuIds = new Set(
+    kidFavorites.map((f) => f.menu_item_id).filter((x): x is string => !!x)
+  )
+  const favoritedPresetIds = new Set(
+    kidFavorites.map((f) => f.preset_id).filter((x): x is string => !!x)
+  )
+
+  // Builder pool: bread + filling + sandwich_vegetable, restricted to kid-compatible.
+  const builderIngredients = ingredients
+    .filter((i) => SANDWICH_BUILDER_CATEGORIES.includes(i.category))
+    .filter(isIngredientCompatible)
+
+  // Visible saved customs for this kid: kid-owned + currently-compatible.
+  const visibleSandwiches = savedSandwiches
+    .filter((s) => s.kid_id === selectedKidId)
+    .filter((s) => isCustomSandwichCompatible(s, ingredients, kidRequiredSlugs))
+
+  const fav = useFavoriteToggle(selectedKidId || null, favorites, onFavoritesChange)
+
+  function applySandwichesChange(next: CustomSandwich[]) {
+    setSavedSandwiches(next)
+    onCustomSandwichesChange(next)
   }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-      {/* Kid selector */}
       {kids.length > 0 && (
         <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4, flexWrap: 'nowrap' }}>
           {kids.map((kid) => (
@@ -112,18 +161,16 @@ export default function MenuPanel({ kids, menuItemsWithTags, initialKidFavorites
         </div>
       )}
 
-      {/* No kids */}
       {kids.length === 0 && (
-        <div style={glass}>
+        <GlassCard>
           <div style={{ textAlign: 'center', color: 'rgba(44,24,16,0.45)', fontSize: 14, padding: 32 }}>
             אין ילדים רשומים. הוסף ילד בלשונית &ldquo;חשבון&rdquo;.
           </div>
-        </div>
+        </GlassCard>
       )}
 
       {kids.length > 0 && (
         <>
-          {/* Section tabs */}
           <div style={{
             display: 'flex', gap: 8,
             background: 'rgba(255,255,255,0.25)',
@@ -151,31 +198,90 @@ export default function MenuPanel({ kids, menuItemsWithTags, initialKidFavorites
             ))}
           </div>
 
-          {/* Error banner */}
-          {actionError && (
-            <div style={{ color: '#EF476F', fontSize: 13, padding: '8px 12px', background: 'rgba(239,71,111,0.08)', borderRadius: 10, border: '1px solid rgba(239,71,111,0.2)' }}>
-              {actionError}
-            </div>
-          )}
-
-          {/* ── Section: ready meals ── */}
-          {activeSection === 'ready' && (
+          {activeSection === 'meals' && selectedKid && (
             <>
-              {visibleItems.length === 0 && selectedKid && (
-                <div style={glass}>
-                  <div style={{ textAlign: 'center', color: 'rgba(44,24,16,0.45)', fontSize: 14, padding: 32 }}>
-                    אין פריטים התואמים את הגבלות התזונה של {selectedKid.name}.
-                  </div>
+              <div style={{ fontSize: 12, color: 'rgba(44,24,16,0.55)', fontWeight: 500, paddingRight: 4, lineHeight: 1.5 }}>
+                סמן ❤️ ארוחות שאתה אוהב — הן יופיעו לבחירה כשאתה מזמין.
+              </div>
+
+              {fav.error && (
+                <div style={{
+                  background: 'rgba(239,71,111,0.08)',
+                  border: '1px solid rgba(239,71,111,0.25)',
+                  color: '#EF476F', borderRadius: 12,
+                  padding: '10px 14px', fontSize: 13, fontWeight: 600,
+                  display: 'flex', alignItems: 'flex-start', gap: 8,
+                }}>
+                  <span style={{ flex: 1, lineHeight: 1.45 }}>{fav.error}</span>
+                  <button
+                    onClick={fav.clearError}
+                    aria-label="סגור"
+                    style={{
+                      background: 'none', border: 'none', color: '#EF476F',
+                      cursor: 'pointer', fontSize: 14, fontWeight: 700, padding: 0,
+                    }}
+                  >
+                    ✕
+                  </button>
                 </div>
               )}
 
-              {visibleItems.map((item) => {
-                const key: FavoriteKey = `${selectedKidId}:${item.id}`
-                const isFav = favorites.has(key)
+              {compatibleMenuItems.length === 0 &&
+                compatibleSandwichPresets.length === 0 &&
+                visibleSandwiches.length === 0 && (
+                  <GlassCard>
+                    <div style={{ textAlign: 'center', color: 'rgba(44,24,16,0.45)', fontSize: 14, padding: 32 }}>
+                      אין פריטים התואמים את הגבלות התזונה של {selectedKid.name}.
+                    </div>
+                  </GlassCard>
+                )}
+
+              {compatibleSandwichPresets.map((preset) => {
+                const isFav = favoritedPresetIds.has(preset.id)
+                const target = { preset_id: preset.id }
+                const labels = preset.dietary_tag_slugs
+                  .map((slug) => tagLabelBySlug.get(slug))
+                  .filter((s): s is string => !!s)
                 return (
-                  <div key={item.id} style={glass}>
+                  <GlassCard key={preset.id}>
                     <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-                      {/* Image */}
+                      <div style={{
+                        width: 64, height: 64, borderRadius: 12, flexShrink: 0,
+                        background: 'rgba(255,179,71,0.15)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}>
+                        <span style={{ fontSize: 28 }}>🥪</span>
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 15, fontWeight: 700, color: '#2C1810', marginBottom: 4 }}>
+                          {preset.name_he}
+                        </div>
+                        {preset.description_he && (
+                          <div style={{ fontSize: 12, color: 'rgba(44,24,16,0.6)', lineHeight: 1.4, marginBottom: 6 }}>
+                            {preset.description_he}
+                          </div>
+                        )}
+                        <TagBadgeRow labels={labels} />
+                      </div>
+                      <HeartButton
+                        on={isFav}
+                        pending={fav.isPending(target)}
+                        onClick={() => fav.toggle(target)}
+                      />
+                    </div>
+                  </GlassCard>
+                )
+              })}
+
+              {compatibleMenuItems.map((item) => {
+                const isFav = favoritedMenuIds.has(item.id)
+                const target = { menu_item_id: item.id }
+                const labels = item.dietary_tag_ids
+                  .map((id) => tagLabelById.get(id))
+                  .filter((s): s is string => !!s)
+                return (
+                  <GlassCard key={item.id}>
+                    <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
                       <div style={{
                         width: 64, height: 64, borderRadius: 12, flexShrink: 0,
                         overflow: 'hidden', background: 'rgba(255,179,71,0.15)',
@@ -183,74 +289,71 @@ export default function MenuPanel({ kids, menuItemsWithTags, initialKidFavorites
                       }}>
                         {item.image_url
                           ? <img src={item.image_url} alt={item.name_he} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                          : <span style={{ fontSize: 28 }}>🍱</span>
-                        }
+                          : <span style={{ fontSize: 28 }}>🍱</span>}
                       </div>
-                      {/* Text */}
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 15, fontWeight: 700, color: '#2C1810', marginBottom: 6 }}>
+                        <div style={{ fontSize: 15, fontWeight: 700, color: '#2C1810', marginBottom: 4 }}>
                           {item.name_he}
                         </div>
-                        {item.dietary_tag_ids.length > 0 && (
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                            {item.dietary_tag_ids.map((tagId) =>
-                              tagLabelMap[tagId] ? (
-                                <span key={tagId} style={{
-                                  fontSize: 11, padding: '2px 8px', borderRadius: 20,
-                                  background: 'rgba(255,107,53,0.10)', color: '#FF6B35', fontWeight: 600,
-                                }}>
-                                  {tagLabelMap[tagId]}
-                                </span>
-                              ) : null
-                            )}
+                        {item.description_he && (
+                          <div style={{ fontSize: 12, color: 'rgba(44,24,16,0.6)', lineHeight: 1.4, marginBottom: 6 }}>
+                            {item.description_he}
                           </div>
                         )}
+                        <TagBadgeRow labels={labels} />
                       </div>
-                      {/* Heart */}
-                      <button
-                        onClick={() => handleToggleFavorite(item.id)}
-                        disabled={isPending}
-                        aria-label={isFav ? 'הסר ממועדפים' : 'הוסף למועדפים'}
-                        style={{
-                          background: 'none', border: 'none', fontSize: 24,
-                          cursor: isPending ? 'default' : 'pointer',
-                          padding: 4, lineHeight: 1, flexShrink: 0,
-                          opacity: isPending ? 0.6 : 1,
-                          transition: 'opacity 150ms',
-                        }}
-                      >
-                        {isFav ? '❤️' : '🤍'}
-                      </button>
+                      <HeartButton
+                        on={isFav}
+                        pending={fav.isPending(target)}
+                        onClick={() => fav.toggle(target)}
+                      />
                     </div>
-                  </div>
+                  </GlassCard>
                 )
               })}
+
+              {visibleSandwiches.length > 0 && (
+                <div style={{ marginTop: 8, fontSize: 13, fontWeight: 700, color: '#2C1810', paddingRight: 4 }}>
+                  הכריכים שלך
+                </div>
+              )}
+              {visibleSandwiches.map((sand) => (
+                <GlassCard key={sand.id}>
+                  <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                    <div style={{
+                      width: 48, height: 48, borderRadius: 12, flexShrink: 0,
+                      background: 'rgba(255,179,71,0.15)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      <span style={{ fontSize: 22 }}>🥪</span>
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 700, color: '#2C1810' }}>
+                      {sand.name_he}
+                    </div>
+                    <button
+                      onClick={() => setActiveSection('custom')}
+                      style={{
+                        background: 'rgba(255,255,255,0.5)', border: 'none',
+                        borderRadius: 20, padding: '6px 12px', fontSize: 12, fontWeight: 600,
+                        color: '#2C1810', cursor: 'pointer',
+                      }}
+                    >
+                      ערוך
+                    </button>
+                  </div>
+                </GlassCard>
+              ))}
             </>
           )}
 
-          {/* ── Section: custom sandwich (placeholder) ── */}
-          {activeSection === 'custom' && (
-            <div style={{
-              ...glass,
-              border: '2px dashed rgba(255,107,53,0.3)',
-              background: 'rgba(255,255,255,0.10)',
-              display: 'flex', flexDirection: 'column',
-              alignItems: 'center', justifyContent: 'center',
-              gap: 12, padding: 40, textAlign: 'center',
-            }}>
-              <span style={{ fontSize: 48 }}>🥪</span>
-              <div style={{ fontSize: 17, fontWeight: 700, color: '#2C1810' }}>בנה כריך בעצמך</div>
-              <div style={{ fontSize: 13, color: 'rgba(44,24,16,0.5)', maxWidth: 220, lineHeight: 1.5 }}>
-                בחר מרכיבים, הגדר כמויות ושמור את הכריך האהוב — בקרוב
-              </div>
-              <div style={{
-                fontSize: 11, fontWeight: 700, letterSpacing: 1,
-                padding: '4px 12px', borderRadius: 20,
-                background: 'rgba(255,107,53,0.10)', color: '#FF6B35',
-              }}>
-                בקרוב
-              </div>
-            </div>
+          {activeSection === 'custom' && selectedKid && (
+            <SandwichBuilder
+              selectedKid={selectedKid}
+              builderIngredients={builderIngredients}
+              visibleSandwiches={visibleSandwiches}
+              onSandwichesChange={applySandwichesChange}
+              allSavedSandwiches={savedSandwiches}
+            />
           )}
         </>
       )}
